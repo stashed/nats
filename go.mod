@@ -1,4 +1,4 @@
-module stash.appscode.dev/redis
+module stash.appscode.dev/nats
 
 go 1.15
 

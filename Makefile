@@ -16,7 +16,7 @@ SHELL=/bin/bash -o pipefail
 
 GO_PKG   := stash.appscode.dev
 REPO     := $(notdir $(shell pwd))
-BIN      := stash-redis
+BIN      := stash-nats
 COMPRESS ?= no
 
 # Where to push the docker image.
@@ -43,7 +43,6 @@ else
 endif
 
 RESTIC_VER       := 0.12.0-ac.20210727
-REDIS_DUMP_VER   := 0.5.1
 
 ###
 ### These variables should not need tweaking.
@@ -59,8 +58,8 @@ BIN_PLATFORMS    := $(DOCKER_PLATFORMS)
 OS   := $(if $(GOOS),$(GOOS),$(shell go env GOOS))
 ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 
-BASEIMAGE_PROD   ?= redis:6.2.5
-BASEIMAGE_DBG    ?= redis:6.2.5
+BASEIMAGE_PROD   ?= natsio/natsbox:0.6.0
+BASEIMAGE_DBG    ?= natsio/natsbox:0.6.0
 
 IMAGE            := $(REGISTRY)/$(BIN)
 VERSION_PROD     := $(VERSION)
@@ -223,7 +222,6 @@ bin/.container-$(DOTFILE_IMAGE)-%: bin/$(OS)_$(ARCH)/$(BIN) $(DOCKERFILE_%)
 		-e 's|{ARG_OS}|$(OS)|g'                     \
 		-e 's|{ARG_FROM}|$(BASEIMAGE_$*)|g'         \
 		-e 's|{RESTIC_VER}|$(RESTIC_VER)|g'         \
-		-e 's|{REDIS_DUMP_VER}|$(REDIS_DUMP_VER)|g' \
 		$(DOCKERFILE_$*) > bin/.dockerfile-$*-$(OS)_$(ARCH)
 	@DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --platform $(OS)/$(ARCH) --load --pull -t $(IMAGE):$(TAG_$*) -f bin/.dockerfile-$*-$(OS)_$(ARCH) .
 	@docker images -q $(IMAGE):$(TAG_$*) > $@
@@ -369,5 +367,5 @@ clean:
 .PHONY: push-to-kind
 push-to-kind: container
 	@echo "Loading docker image into kind cluster...."
-	@kind load docker-image $(REGISTRY)/stash-redis:$(TAG)
+	@kind load docker-image $(REGISTRY)/stash-nats:$(TAG)
 	@echo "Image has been pushed successfully into kind cluster."

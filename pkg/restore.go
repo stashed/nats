@@ -40,7 +40,7 @@ func NewCmdRestore() *cobra.Command {
 	var (
 		masterURL      string
 		kubeconfigPath string
-		opt            = redisOptions{
+		opt            = natsOptions{
 			setupOptions: restic.SetupOptions{
 				ScratchDir:  restic.DefaultScratchDir,
 				EnableCache: false,
@@ -48,14 +48,14 @@ func NewCmdRestore() *cobra.Command {
 			waitTimeout: 300,
 			dumpOptions: restic.DumpOptions{
 				Host:     restic.DefaultHost,
-				FileName: RedisDumpFile,
+				FileName: NATSDumpFile,
 			},
 		}
 	)
 
 	cmd := &cobra.Command{
-		Use:               "restore-redis",
-		Short:             "Restores Redis DB Backup",
+		Use:               "restore-nats",
+		Short:             "Restores NATS DB Backup",
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags.EnsureRequiredFlags(cmd, "appbinding", "provider", "secret-dir")
@@ -85,7 +85,7 @@ func NewCmdRestore() *cobra.Command {
 			}
 
 			var restoreOutput *restic.RestoreOutput
-			restoreOutput, err = opt.restoreRedis(targetRef)
+			restoreOutput, err = opt.restoreNATS(targetRef)
 			if err != nil {
 				restoreOutput = &restic.RestoreOutput{
 					RestoreTargetStatus: api_v1beta1.RestoreMemberStatus{
@@ -109,7 +109,7 @@ func NewCmdRestore() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opt.redisArgs, "redis-args", opt.redisArgs, "Additional arguments")
+	cmd.Flags().StringVar(&opt.natsArgs, "nats-args", opt.natsArgs, "Additional arguments")
 	cmd.Flags().Int32Var(&opt.waitTimeout, "wait-timeout", opt.waitTimeout, "Time limit to wait for the database to be ready")
 
 	cmd.Flags().StringVar(&masterURL, "master", masterURL, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
@@ -137,7 +137,7 @@ func NewCmdRestore() *cobra.Command {
 	return cmd
 }
 
-func (opt *redisOptions) restoreRedis(targetRef api_v1beta1.TargetRef) (*restic.RestoreOutput, error) {
+func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.RestoreOutput, error) {
 	// apply nice, ionice settings from env
 	var err error
 	opt.setupOptions.Nice, err = v1.NiceSettingsFromEnv()
@@ -169,13 +169,13 @@ func (opt *redisOptions) restoreRedis(targetRef api_v1beta1.TargetRef) (*restic.
 
 	// setup pipe command
 	restoreCmd := restic.Command{
-		Name: RedisRestoreCMD,
+		Name: NATSRestoreCMD,
 		Args: []interface{}{
 			"--pipe",
 			"-h", appBinding.Spec.ClientConfig.Service.Name,
 		},
 	}
-	for _, arg := range strings.Fields(opt.redisArgs) {
+	for _, arg := range strings.Fields(opt.natsArgs) {
 		restoreCmd.Args = append(restoreCmd.Args, arg)
 	}
 	// if port is specified, append port in the arguments

@@ -42,7 +42,7 @@ func NewCmdBackup() *cobra.Command {
 	var (
 		masterURL      string
 		kubeconfigPath string
-		opt            = redisOptions{
+		opt            = natsOptions{
 			waitTimeout: 300,
 			setupOptions: restic.SetupOptions{
 				ScratchDir:  restic.DefaultScratchDir,
@@ -50,14 +50,14 @@ func NewCmdBackup() *cobra.Command {
 			},
 			backupOptions: restic.BackupOptions{
 				Host:          restic.DefaultHost,
-				StdinFileName: RedisDumpFile,
+				StdinFileName: NATSDumpFile,
 			},
 		}
 	)
 
 	cmd := &cobra.Command{
-		Use:               "backup-redis",
-		Short:             "Takes a backup of Redis DB",
+		Use:               "backup-nats",
+		Short:             "Takes a backup of NATS DB",
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags.EnsureRequiredFlags(cmd, "appbinding", "provider", "secret-dir")
@@ -89,7 +89,7 @@ func NewCmdBackup() *cobra.Command {
 				Name:       opt.appBindingName,
 			}
 			var backupOutput *restic.BackupOutput
-			backupOutput, err = opt.backupRedis(targetRef)
+			backupOutput, err = opt.backupNATS(targetRef)
 			if err != nil {
 				backupOutput = &restic.BackupOutput{
 					BackupTargetStatus: api_v1beta1.BackupTargetStatus{
@@ -114,7 +114,7 @@ func NewCmdBackup() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opt.redisArgs, "redis-args", opt.redisArgs, "Additional arguments")
+	cmd.Flags().StringVar(&opt.natsArgs, "nats-args", opt.natsArgs, "Additional arguments")
 	cmd.Flags().Int32Var(&opt.waitTimeout, "wait-timeout", opt.waitTimeout, "Time limit to wait for the database to be ready")
 
 	cmd.Flags().StringVar(&masterURL, "master", masterURL, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
@@ -150,7 +150,7 @@ func NewCmdBackup() *cobra.Command {
 	return cmd
 }
 
-func (opt *redisOptions) backupRedis(targetRef api_v1beta1.TargetRef) (*restic.BackupOutput, error) {
+func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.BackupOutput, error) {
 	// if any pre-backup actions has been assigned to it, execute them
 	actionOptions := api_util.ActionOptions{
 		StashClient:       opt.stashClient,
@@ -198,12 +198,12 @@ func (opt *redisOptions) backupRedis(targetRef api_v1beta1.TargetRef) (*restic.B
 
 	// setup pipe command
 	backupCmd := restic.Command{
-		Name: RedisDumpCMD,
+		Name: NATSBackupCMD,
 		Args: []interface{}{
 			"-host", appBinding.Spec.ClientConfig.Service.Name,
 		},
 	}
-	for _, arg := range strings.Fields(opt.redisArgs) {
+	for _, arg := range strings.Fields(opt.natsArgs) {
 		backupCmd.Args = append(backupCmd.Args, arg)
 	}
 

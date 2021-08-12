@@ -21,7 +21,7 @@ import (
 	"runtime"
 
 	_ "stash.appscode.dev/apimachinery/client/clientset/versioned/fake"
-	"stash.appscode.dev/redis/pkg"
+	"stash.appscode.dev/nats/pkg"
 
 	"gomodules.xyz/logs"
 	_ "k8s.io/client-go/kubernetes/fake"

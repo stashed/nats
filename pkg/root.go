@@ -31,9 +31,9 @@ var licenseApiService string
 
 func NewRootCmd() *cobra.Command {
 	var rootCmd = &cobra.Command{
-		Use:               "stash-redis",
-		Short:             `Redis backup & restore plugin for Stash by AppsCode`,
-		Long:              `Redis backup & restore plugin for Stash by AppsCode. For more information, visit here: https://stash.run`,
+		Use:               "stash-nats",
+		Short:             `NATS backup & restore plugin for Stash by AppsCode`,
+		Long:              `NATS backup & restore plugin for Stash by AppsCode. For more information, visit here: https://stash.run`,
 		DisableAutoGenTag: true,
 		PersistentPreRunE: func(c *cobra.Command, args []string) error {
 			cli.SendAnalytics(c, v.Version.Version)

@@ -1,12 +1,12 @@
-[![Go Report Card](https://goreportcard.com/badge/stash.appscode.dev/redis)](https://goreportcard.com/report/stash.appscode.dev/redis)
-![CI](https://github.com/stashed/redis/workflows/CI/badge.svg)
-[![Docker Pulls](https://img.shields.io/docker/pulls/stashed/stash-redis.svg)](https://hub.docker.com/r/stashed/stash-redis/)
+[![Go Report Card](https://goreportcard.com/badge/stash.appscode.dev/nats)](https://goreportcard.com/report/stash.appscode.dev/nats)
+![CI](https://github.com/stashed/nats/workflows/CI/badge.svg)
+[![Docker Pulls](https://img.shields.io/docker/pulls/stashed/stash-nats.svg)](https://hub.docker.com/r/stashed/stash-nats/)
 [![Slack](https://shields.io/badge/Join_Slack-salck?color=4A154B&logo=slack)](https://slack.appscode.com)
 [![Twitter](https://img.shields.io/twitter/follow/kubestash.svg?style=social&logo=twitter&label=Follow)](https://twitter.com/intent/follow?screen_name=KubeStash)
 
-# Redis
+# NATS
 
-Redis backup and restore plugin for [Stash by AppsCode](https://stash.run).
+NATS backup and restore plugin for [Stash by AppsCode](https://stash.run).
 
 ## Support
 
