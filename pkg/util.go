@@ -33,16 +33,16 @@ import (
 )
 
 const (
-	RedisUser          = "username"
-	RedisPassword      = "password"
-	RedisDumpFile      = "dumpfile.resp"
-	RedisDumpCMD       = "redis-dump-go"
-	RedisRestoreCMD    = "redis-cli"
-	EnvRedisCLIAuth    = "REDISCLI_AUTH"
-	EnvRedisDumpGoAuth = "REDISDUMPGO_AUTH"
+	NATSUser        = "username"
+	NATSPassword    = "password"
+	NATSDumpFile    = "dumpfile.resp"
+	NATSBackupCMD   = "nats"
+	NATSRestoreCMD  = "nats"
+	EnvNATSUseer    = "NATS_USER"
+	EnvNATSPassword = "NATS_PASSWORD"
 )
 
-type redisOptions struct {
+type natsOptions struct {
 	kubeClient    kubernetes.Interface
 	stashClient   stash.Interface
 	catalogClient appcatalog_cs.Interface
@@ -50,7 +50,7 @@ type redisOptions struct {
 	namespace         string
 	backupSessionName string
 	appBindingName    string
-	redisArgs         string
+	natsArgs          string
 	waitTimeout       int32
 	outputDir         string
 
@@ -76,7 +76,7 @@ func (wrapper *SessionWrapper) SetEnv(key, value string) {
 	wrapper.Session.SetEnv(key, value)
 }
 
-func (opt *redisOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error {
+func (opt *natsOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error {
 	klog.Infoln("Waiting for the database to be ready.....")
 	sh := NewSessionWrapper()
 	args := []interface{}{
@@ -96,7 +96,7 @@ func (opt *redisOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error
 	}
 
 	return wait.PollImmediate(time.Second*5, time.Minute*5, func() (bool, error) {
-		err := sh.Command("redis-cli", args...).Run()
+		err := sh.Command("nats", args...).Run()
 		if err != nil {
 			return false, nil
 		}
@@ -104,7 +104,7 @@ func (opt *redisOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error
 	})
 }
 
-func (opt *redisOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
+func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {
 		return nil
@@ -122,10 +122,8 @@ func (opt *redisOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBind
 		return err
 	}
 
-	// set auth env for redis-cli
-	sh.SetEnv(EnvRedisCLIAuth, string(secret.Data[RedisPassword]))
+	// set auth env for nats
+	sh.SetEnv(EnvNATSUseer, string(secret.Data[NATSPassword]))
 
-	// set auth env for redis-dump-go
-	sh.SetEnv(EnvRedisDumpGoAuth, string(secret.Data[RedisPassword]))
 	return nil
 }

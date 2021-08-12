@@ -26,16 +26,10 @@ RUN set -x                                                                      
   && bzip2 -d restic.bz2                                                                                                                   \
   && chmod 755 restic
 
-RUN set -x                                                                                                                                                          \
-  && curl -fsSL -o redis-dump-go.tar.gz https://github.com/yannh/redis-dump-go/releases/download/v{REDIS_DUMP_VER}/redis-dump-go_{REDIS_DUMP_VER}_{ARG_OS}_{ARG_ARCH}.tar.gz         \
-  && tar -xzf redis-dump-go.tar.gz                                                                                                                                  \
-  && chmod 755 redis-dump-go
-
-
 
 FROM {ARG_FROM}
 
-LABEL org.opencontainers.image.source https://github.com/stashed/redis
+LABEL org.opencontainers.image.source https://github.com/stashed/nats
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
@@ -46,7 +40,6 @@ RUN set -x \
   && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /tmp/*
 
 COPY --from=0 restic /bin/restic
-COPY --from=0 redis-dump-go /bin/redis-dump-go
 COPY bin/{ARG_OS}_{ARG_ARCH}/{ARG_BIN} /{ARG_BIN}
 
 ENTRYPOINT ["/{ARG_BIN}"]
