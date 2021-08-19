@@ -18,9 +18,9 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	"stash.appscode.dev/apimachinery/pkg/restic"
@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 	appcatalog "kmodules.xyz/custom-resources/apis/appcatalog/v1alpha1"
 	appcatalog_cs "kmodules.xyz/custom-resources/client/clientset/versioned"
 	v1 "kmodules.xyz/offshoot-api/api/v1"
@@ -46,9 +47,8 @@ func NewCmdRestore() *cobra.Command {
 				EnableCache: false,
 			},
 			waitTimeout: 300,
-			dumpOptions: restic.DumpOptions{
-				Host:     restic.DefaultHost,
-				FileName: NATSDumpFile,
+			restoreOptions: restic.RestoreOptions{
+				Host: restic.DefaultHost,
 			},
 		}
 	)
@@ -92,7 +92,7 @@ func NewCmdRestore() *cobra.Command {
 						Ref: targetRef,
 						Stats: []api_v1beta1.HostRestoreStats{
 							{
-								Hostname: opt.dumpOptions.Host,
+								Hostname: opt.restoreOptions.Host,
 								Phase:    api_v1beta1.HostRestoreFailed,
 								Error:    err.Error(),
 							},
@@ -127,13 +127,14 @@ func NewCmdRestore() *cobra.Command {
 	cmd.Flags().BoolVar(&opt.setupOptions.EnableCache, "enable-cache", opt.setupOptions.EnableCache, "Specify whether to enable caching for restic")
 	cmd.Flags().Int64Var(&opt.setupOptions.MaxConnections, "max-connections", opt.setupOptions.MaxConnections, "Specify maximum concurrent connections for GCS, Azure and B2 backend")
 
-	cmd.Flags().StringVar(&opt.dumpOptions.Host, "hostname", opt.dumpOptions.Host, "Name of the host machine")
-	cmd.Flags().StringVar(&opt.dumpOptions.SourceHost, "source-hostname", opt.dumpOptions.SourceHost, "Name of the host from where data will be restored")
+	cmd.Flags().StringVar(&opt.restoreOptions.Host, "hostname", opt.restoreOptions.Host, "Name of the host machine")
+	cmd.Flags().StringVar(&opt.restoreOptions.SourceHost, "source-hostname", opt.restoreOptions.SourceHost, "Name of the host from where data will be restored")
 	// TODO: sliceVar
-	cmd.Flags().StringVar(&opt.dumpOptions.Snapshot, "snapshot", opt.dumpOptions.Snapshot, "Snapshot to dump")
+	cmd.Flags().StringSliceVar(&opt.restoreOptions.Snapshots, "snapshot", opt.restoreOptions.Snapshots, "Snapshot to dump")
+	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired database.")
 
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
-
+	cmd.Flags().StringVar(&opt.streams, "streams", opt.streams, "Specify the name of the stream")
 	return cmd
 }
 
@@ -155,32 +156,10 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	// init restic wrapper
-	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
-	if err != nil {
+	// clear directory
+	klog.Infoln("Cleaning up directory: ", opt.interimDataDir)
+	if err := clearDir(opt.interimDataDir); err != nil {
 		return nil, err
-	}
-
-	// set access credentials
-	err = opt.setCredentials(resticWrapper, appBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	// setup pipe command
-	restoreCmd := restic.Command{
-		Name: NATSRestoreCMD,
-		Args: []interface{}{
-			"--pipe",
-			"-h", appBinding.Spec.ClientConfig.Service.Name,
-		},
-	}
-	for _, arg := range strings.Fields(opt.natsArgs) {
-		restoreCmd.Args = append(restoreCmd.Args, arg)
-	}
-	// if port is specified, append port in the arguments
-	if appBinding.Spec.ClientConfig.Service.Port != 0 {
-		restoreCmd.Args = append(restoreCmd.Args, "-p", strconv.Itoa(int(appBinding.Spec.ClientConfig.Service.Port)))
 	}
 
 	// wait for DB ready
@@ -189,9 +168,65 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	// append the restore command to the pipeline
-	opt.dumpOptions.StdoutPipeCommands = append(opt.dumpOptions.StdoutPipeCommands, restoreCmd)
+	// we will restore the desired data into interim data dir before injecting into the desired database
+	opt.restoreOptions.RestorePaths = []string{opt.interimDataDir}
 
-	// Run dump
-	return resticWrapper.Dump(opt.dumpOptions, targetRef)
+	// init restic wrapper
+	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
+	if err != nil {
+		return nil, err
+	}
+	// Run restore
+	restoreOutput, err := resticWrapper.RunRestore(opt.restoreOptions, targetRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// run separate shell to perform restore
+	restoreShell := NewSessionWrapper()
+
+	// set access credentials
+	err = opt.setCredentials(restoreShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	restoreShell.ShowCMD = false
+	restoreArgs := []interface{}{
+		"stream",
+		"restore",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+
+	if opt.streams == "" {
+		// restore all the streams
+		byteStreams, err := ioutil.ReadFile(opt.interimDataDir + "/" + NATSStreamsFile)
+		if err != nil {
+			return nil, err
+		}
+		var streams []string
+		err = json.Unmarshal(byteStreams, &streams)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := 0; i < len(streams); i++ {
+			restoreArgs = append(restoreArgs, streams[i], opt.interimDataDir+"/"+streams[i])
+			restoreShell.Command(NATSCMD, restoreArgs...)
+			if err := restoreShell.Run(); err != nil {
+				return nil, err
+			}
+			restoreArgs = restoreArgs[:len(restoreArgs)-2]
+		}
+
+	} else {
+		// restore specific stream
+		restoreArgs = append(restoreArgs, opt.streams, opt.interimDataDir+"/"+opt.streams)
+		restoreShell.Command(NATSCMD, restoreArgs...)
+		if err := restoreShell.Run(); err != nil {
+			return nil, err
+		}
+	}
+
+	return restoreOutput, nil
 }

@@ -18,6 +18,8 @@ package pkg
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -35,10 +37,9 @@ import (
 const (
 	NATSUser        = "username"
 	NATSPassword    = "password"
-	NATSDumpFile    = "dumpfile.resp"
-	NATSBackupCMD   = "nats"
-	NATSRestoreCMD  = "nats"
-	EnvNATSUseer    = "NATS_USER"
+	NATSCMD         = "nats"
+	NATSStreamsFile = "streams.json"
+	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
 )
 
@@ -49,14 +50,16 @@ type natsOptions struct {
 
 	namespace         string
 	backupSessionName string
+	interimDataDir    string
+	streams           string
 	appBindingName    string
 	natsArgs          string
 	waitTimeout       int32
 	outputDir         string
 
-	setupOptions  restic.SetupOptions
-	backupOptions restic.BackupOptions
-	dumpOptions   restic.DumpOptions
+	setupOptions   restic.SetupOptions
+	backupOptions  restic.BackupOptions
+	restoreOptions restic.RestoreOptions
 }
 
 type Shell interface {
@@ -76,17 +79,21 @@ func (wrapper *SessionWrapper) SetEnv(key, value string) {
 	wrapper.Session.SetEnv(key, value)
 }
 
+func clearDir(dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("unable to clean datadir: %v. Reason: %v", dir, err)
+	}
+	return os.MkdirAll(dir, os.ModePerm)
+}
+
 func (opt *natsOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error {
-	klog.Infoln("Waiting for the database to be ready.....")
+	klog.Infoln("Waiting for the nats server to be ready.....")
 	sh := NewSessionWrapper()
 	args := []interface{}{
-		"-h", appBinding.Spec.ClientConfig.Service.Name,
-		"ping",
-	}
-
-	//if port is specified, append port in the arguments
-	if appBinding.Spec.ClientConfig.Service.Port != 0 {
-		args = append(args, "-p", appBinding.Spec.ClientConfig.Service.Port)
+		"server",
+		"check",
+		"connection",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
 
 	// set access credentials
@@ -123,7 +130,8 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	}
 
 	// set auth env for nats
-	sh.SetEnv(EnvNATSUseer, string(secret.Data[NATSPassword]))
+	sh.SetEnv(EnvNATSUser, string(secret.Data[NATSUser]))
+	sh.SetEnv(EnvNATSPassword, string(secret.Data[NATSPassword]))
 
 	return nil
 }

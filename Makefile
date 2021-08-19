@@ -20,7 +20,7 @@ BIN      := stash-nats
 COMPRESS ?= no
 
 # Where to push the docker image.
-REGISTRY ?= stashed
+REGISTRY ?= hmsayem
 
 # This version-strategy uses git tags to set the version string
 git_branch       := $(shell git rev-parse --abbrev-ref HEAD)
@@ -58,8 +58,8 @@ BIN_PLATFORMS    := $(DOCKER_PLATFORMS)
 OS   := $(if $(GOOS),$(GOOS),$(shell go env GOOS))
 ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 
-BASEIMAGE_PROD   ?= natsio/natsbox:0.6.0
-BASEIMAGE_DBG    ?= natsio/natsbox:0.6.0
+BASEIMAGE_PROD   ?= natsio/nats-box:0.6.0
+BASEIMAGE_DBG    ?= natsio/nats-box:0.6.0
 
 IMAGE            := $(REGISTRY)/$(BIN)
 VERSION_PROD     := $(VERSION)
