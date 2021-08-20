@@ -19,7 +19,9 @@ package pkg
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -210,6 +212,15 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		"backup",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
+	// if tls enabled, add ca.crt in the arguments
+	var tlsArgs string
+	if appBinding.Spec.ClientConfig.CABundle != nil {
+		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
+			return nil, err
+		}
+		tlsArgs = fmt.Sprintf("--tlsca=%v", filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
+		backupArgs = append(backupArgs, tlsArgs)
+	}
 
 	if opt.streams == "" {
 		// backup all the streams
@@ -230,6 +241,9 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 			"ls",
 			"--json",
 			"--server", appBinding.Spec.ClientConfig.Service.Name,
+		}
+		if appBinding.Spec.ClientConfig.CABundle != nil {
+			streamArgs = append(streamArgs, tlsArgs)
 		}
 
 		streamShell.Command(NATSCMD, streamArgs...)

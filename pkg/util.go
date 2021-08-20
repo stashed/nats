@@ -19,7 +19,9 @@ package pkg
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -41,6 +43,7 @@ const (
 	NATSStreamsFile = "streams.json"
 	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
+	NATSCACertFile  = "ca.crt"
 )
 
 type natsOptions struct {
@@ -94,6 +97,15 @@ func (opt *natsOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error 
 		"check",
 		"connection",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+
+	var tlsArgs string
+	if appBinding.Spec.ClientConfig.CABundle != nil {
+		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
+			return err
+		}
+		tlsArgs = fmt.Sprintf("--tlsca=%v", filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
+		args = append(args, tlsArgs)
 	}
 
 	// set access credentials
