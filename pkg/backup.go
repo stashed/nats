@@ -19,9 +19,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -198,6 +196,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	}
 	// run separate shell to perform backup
 	backupShell := NewSessionWrapper()
+	backupShell.ShowCMD = false
 
 	// set access credentials
 	err = opt.setCredentials(backupShell, appBinding)
@@ -205,21 +204,16 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
-	backupShell.ShowCMD = false
+	// set TLS
+	err = opt.setTLS(backupShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
 
 	backupArgs := []interface{}{
 		"stream",
 		"backup",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
-	}
-	// if tls enabled, add ca.crt in the arguments
-	var tlsArgs string
-	if appBinding.Spec.ClientConfig.CABundle != nil {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
-			return nil, err
-		}
-		tlsArgs = fmt.Sprintf("--tlsca=%v", filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
-		backupArgs = append(backupArgs, tlsArgs)
 	}
 
 	if opt.streams == "" {
@@ -227,6 +221,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 		// run separate shell to fetch all the streams
 		streamShell := NewSessionWrapper()
+		streamShell.ShowCMD = false
 
 		// set access credentials
 		err = opt.setCredentials(streamShell, appBinding)
@@ -234,7 +229,11 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 			return nil, err
 		}
 
-		streamShell.ShowCMD = false
+		// set TLS
+		err = opt.setTLS(streamShell, appBinding)
+		if err != nil {
+			return nil, err
+		}
 
 		streamArgs := []interface{}{
 			"stream",
@@ -242,17 +241,12 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 			"--json",
 			"--server", appBinding.Spec.ClientConfig.Service.Name,
 		}
-		if appBinding.Spec.ClientConfig.CABundle != nil {
-			streamArgs = append(streamArgs, tlsArgs)
-		}
 
 		streamShell.Command(NATSCMD, streamArgs...)
-		klog.Infoln("Writing stream list to: ", NATSStreamsFile)
 		err := streamShell.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
-		klog.Infoln("Reading stream list from: ", NATSStreamsFile)
 		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err

@@ -19,9 +19,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -186,6 +184,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 
 	// run separate shell to perform restore
 	restoreShell := NewSessionWrapper()
+	restoreShell.ShowCMD = false
 
 	// set access credentials
 	err = opt.setCredentials(restoreShell, appBinding)
@@ -193,20 +192,17 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	restoreShell.ShowCMD = false
+	// set TLS
+	err = opt.setTLS(restoreShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
 	restoreArgs := []interface{}{
 		"stream",
 		"restore",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
-	var tlsArgs string
-	if appBinding.Spec.ClientConfig.CABundle != nil {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
-			return nil, err
-		}
-		tlsArgs = fmt.Sprintf("--tlsca=%v", filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
-		restoreArgs = append(restoreArgs, tlsArgs)
-	}
+
 	if opt.streams == "" {
 		// restore all the streams
 		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))

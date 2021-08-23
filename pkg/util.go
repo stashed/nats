@@ -44,10 +44,11 @@ const (
 	NATSCMD         = "nats"
 	NATSStreamsFile = "streams.json"
 	NATSCredsFile   = "user.creds"
+	NATSCACertFile  = "ca.crt"
 	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
 	EnvNATSCreds    = "NATS_CREDS"
-	NATSCACertFile  = "ca.crt"
+	EnvNATSCA       = "NATS_CA"
 )
 
 type natsOptions struct {
@@ -103,17 +104,13 @@ func (opt *natsOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error 
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
 
-	var tlsArgs string
-	if appBinding.Spec.ClientConfig.CABundle != nil {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
-			return err
-		}
-		tlsArgs = fmt.Sprintf("--tlsca=%v", filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
-		args = append(args, tlsArgs)
+	err := opt.setTLS(sh, appBinding)
+	if err != nil {
+		return err
 	}
 
 	// set access credentials
-	err := opt.setCredentials(sh, appBinding)
+	err = opt.setCredentials(sh, appBinding)
 	if err != nil {
 		return err
 	}
@@ -126,7 +123,17 @@ func (opt *natsOptions) waitForDBReady(appBinding *appcatalog.AppBinding) error 
 		return true, nil
 	})
 }
+func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) error {
+	if appBinding.Spec.ClientConfig.CABundle == nil {
+		return nil
+	}
 
+	if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
+		return err
+	}
+	sh.SetEnv(EnvNATSCA, filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
+	return nil
+}
 func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {
@@ -162,6 +169,5 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 		}
 		sh.SetEnv(EnvNATSCreds, filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile))
 	}
-
 	return nil
 }
