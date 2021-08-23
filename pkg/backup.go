@@ -248,12 +248,12 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 		streamShell.Command(NATSCMD, streamArgs...)
 		klog.Infoln("Writing stream list to: ", NATSStreamsFile)
-		err := streamShell.WriteStdout(opt.interimDataDir + "/" + NATSStreamsFile)
+		err := streamShell.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
 		klog.Infoln("Reading stream list from: ", NATSStreamsFile)
-		byteStreams, err := ioutil.ReadFile(opt.interimDataDir + "/" + NATSStreamsFile)
+		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +264,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		}
 
 		for i := 0; i < len(streams); i++ {
-			backupArgs = append(backupArgs, streams[i], opt.interimDataDir+"/"+streams[i])
+			backupArgs = append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
 			backupShell.Command(NATSCMD, backupArgs...)
 			if err := backupShell.Run(); err != nil {
 				return nil, err
@@ -274,7 +274,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 	} else {
 		// backup specific stream
-		backupArgs = append(backupArgs, opt.streams, opt.interimDataDir+"/"+opt.streams)
+		backupArgs = append(backupArgs, opt.streams, filepath.Join(opt.interimDataDir, opt.streams))
 		backupShell.Command(NATSCMD, backupArgs...)
 		if err := backupShell.Run(); err != nil {
 			return nil, err

@@ -209,7 +209,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	}
 	if opt.streams == "" {
 		// restore all the streams
-		byteStreams, err := ioutil.ReadFile(opt.interimDataDir + "/" + NATSStreamsFile)
+		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
@@ -220,7 +220,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		}
 
 		for i := 0; i < len(streams); i++ {
-			restoreArgs = append(restoreArgs, streams[i], opt.interimDataDir+"/"+streams[i])
+			restoreArgs = append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
 			restoreShell.Command(NATSCMD, restoreArgs...)
 			if err := restoreShell.Run(); err != nil {
 				return nil, err
@@ -230,7 +230,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 
 	} else {
 		// restore specific stream
-		restoreArgs = append(restoreArgs, opt.streams, opt.interimDataDir+"/"+opt.streams)
+		restoreArgs = append(restoreArgs, opt.streams, filepath.Join(opt.interimDataDir, opt.streams))
 		restoreShell.Command(NATSCMD, restoreArgs...)
 		if err := restoreShell.Run(); err != nil {
 			return nil, err

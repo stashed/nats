@@ -38,12 +38,15 @@ import (
 
 const (
 	NATSUser        = "username"
+	NATSCreds       = "creds"
 	NATSPassword    = "password"
-	NATSToken        = "token"
+	NATSToken       = "token"
 	NATSCMD         = "nats"
 	NATSStreamsFile = "streams.json"
+	NATSCredsFile   = "user.creds"
 	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
+	EnvNATSCreds    = "NATS_CREDS"
 	NATSCACertFile  = "ca.crt"
 )
 
@@ -143,11 +146,21 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	}
 
 	// set auth env for nats
+	// Token authentication
+	if len(secret.Data[NATSToken]) != 0 {
+		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSToken]))
+	}
+	// Basic authentication
 	if len(secret.Data[NATSUser]) != 0 {
 		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSUser]))
 		sh.SetEnv(EnvNATSPassword, string(secret.Data[NATSPassword]))
-	}  else {
-		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSToken]))
+	}
+	//JWT Authentication
+	if len(secret.Data[NATSCreds]) != 0 {
+		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile), secret.Data[NATSCreds], os.ModePerm); err != nil {
+			return err
+		}
+		sh.SetEnv(EnvNATSCreds, filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile))
 	}
 
 	return nil
