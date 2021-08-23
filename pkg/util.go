@@ -39,6 +39,7 @@ import (
 const (
 	NATSUser        = "username"
 	NATSPassword    = "password"
+	NATSToken        = "token"
 	NATSCMD         = "nats"
 	NATSStreamsFile = "streams.json"
 	EnvNATSUser     = "NATS_USER"
@@ -142,8 +143,12 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	}
 
 	// set auth env for nats
-	sh.SetEnv(EnvNATSUser, string(secret.Data[NATSUser]))
-	sh.SetEnv(EnvNATSPassword, string(secret.Data[NATSPassword]))
+	if len(secret.Data[NATSUser]) != 0 {
+		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSUser]))
+		sh.SetEnv(EnvNATSPassword, string(secret.Data[NATSPassword]))
+	}  else {
+		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSToken]))
+	}
 
 	return nil
 }
