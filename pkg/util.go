@@ -41,14 +41,17 @@ const (
 	NATSCreds       = "creds"
 	NATSPassword    = "password"
 	NATSToken       = "token"
+	NATSNkey        = "nkey"
 	NATSCMD         = "nats"
 	NATSStreamsFile = "streams.json"
 	NATSCredsFile   = "user.creds"
 	NATSCACertFile  = "ca.crt"
+	NATSNkeyFile    = "user.nk"
 	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
 	EnvNATSCreds    = "NATS_CREDS"
 	EnvNATSCA       = "NATS_CA"
+	EnvNATSNkey     = "NATS_NKEY"
 )
 
 type natsOptions struct {
@@ -161,6 +164,13 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	if len(secret.Data[NATSUser]) != 0 {
 		sh.SetEnv(EnvNATSUser, string(secret.Data[NATSUser]))
 		sh.SetEnv(EnvNATSPassword, string(secret.Data[NATSPassword]))
+	}
+	//Nkey Authentication
+	if len(secret.Data[NATSNkey]) != 0 {
+		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile), secret.Data[NATSNkey], os.ModePerm); err != nil {
+			return err
+		}
+		sh.SetEnv(EnvNATSNkey, filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile))
 	}
 	//JWT Authentication
 	if len(secret.Data[NATSCreds]) != 0 {
