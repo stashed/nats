@@ -129,12 +129,11 @@ func NewCmdRestore() *cobra.Command {
 
 	cmd.Flags().StringVar(&opt.restoreOptions.Host, "hostname", opt.restoreOptions.Host, "Name of the host machine")
 	cmd.Flags().StringVar(&opt.restoreOptions.SourceHost, "source-hostname", opt.restoreOptions.SourceHost, "Name of the host from where data will be restored")
-	// TODO: sliceVar
 	cmd.Flags().StringSliceVar(&opt.restoreOptions.Snapshots, "snapshot", opt.restoreOptions.Snapshots, "Snapshot to dump")
-	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired database.")
 
+	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired database.")
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
-	cmd.Flags().StringVar(&opt.streams, "streams", opt.streams, "Specify the name of the stream")
+	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "Names of the streams")
 	return cmd
 }
 
@@ -157,13 +156,13 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	}
 
 	// clear directory
-	klog.Infoln("Cleaning up directory: ", opt.interimDataDir)
+	klog.Infoln("Cleaning up temporary data directory: ", opt.interimDataDir)
 	if err := clearDir(opt.interimDataDir); err != nil {
 		return nil, err
 	}
 
-	// wait for DB ready
-	err = opt.waitForDBReady(appBinding)
+	// wait for NATS ready
+	err = opt.waitForNATSReady(appBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +183,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 
 	// run separate shell to perform restore
 	restoreShell := NewSessionWrapper()
-	restoreShell.ShowCMD = false
+	restoreShell.ShowCMD = true
 
 	// set access credentials
 	err = opt.setCredentials(restoreShell, appBinding)
@@ -203,34 +202,28 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
 
-	if opt.streams == "" {
-		// restore all the streams
+	var streams []string
+	if len(opt.streams) != 0 {
+		streams = opt.streams
+	} else {
 		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
-		var streams []string
 		err = json.Unmarshal(byteStreams, &streams)
 		if err != nil {
 			return nil, err
 		}
+	}
 
-		for i := 0; i < len(streams); i++ {
-			restoreArgs = append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-			restoreShell.Command(NATSCMD, restoreArgs...)
-			if err := restoreShell.Run(); err != nil {
-				return nil, err
-			}
-			restoreArgs = restoreArgs[:len(restoreArgs)-2]
-		}
-
-	} else {
-		// restore specific stream
-		restoreArgs = append(restoreArgs, opt.streams, filepath.Join(opt.interimDataDir, opt.streams))
+	for i := range streams {
+		restoreArgs = append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
 		restoreShell.Command(NATSCMD, restoreArgs...)
 		if err := restoreShell.Run(); err != nil {
 			return nil, err
 		}
+		// remove this stream specific args
+		restoreArgs = restoreArgs[:len(restoreArgs)-2]
 	}
 
 	return restoreOutput, nil
