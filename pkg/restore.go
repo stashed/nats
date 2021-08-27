@@ -134,9 +134,50 @@ func NewCmdRestore() *cobra.Command {
 	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired database.")
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
 	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "Names of the streams")
+	cmd.Flags().BoolVar(&opt.overwrite, "overwrite", opt.overwrite, "Specify whether to enable overwriting data by replacing existing streams")
 	return cmd
 }
-
+func streamExists(s1 string, list []string) bool {
+	for _, s2 := range list {
+		if s2 == s1 {
+			return true
+		}
+	}
+	return false
+}
+func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding, streams []string) error {
+	lsArgs := []interface{}{
+		"stream",
+		"ls",
+		"--json",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
+	if err != nil {
+		return err
+	}
+	var currStreams []string
+	if err := json.Unmarshal(byteStreams, &currStreams); err != nil {
+		return err
+	}
+	rmArgs := []interface{}{
+		"stream",
+		"rm",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"-f",
+	}
+	for i := range streams {
+		if streamExists(streams[i], currStreams) {
+			rmArgs = append(rmArgs, streams[i])
+			sh.Command(NATSCMD, rmArgs...)
+			if err := sh.Run(); err != nil {
+				return err
+			}
+			rmArgs = rmArgs[:len(rmArgs)-1]
+		}
+	}
+	return nil
+}
 func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.RestoreOutput, error) {
 	// apply nice, ionice settings from env
 	var err error
@@ -215,7 +256,12 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 			return nil, err
 		}
 	}
-
+	if opt.overwrite {
+		err := removeMatchedStreams(restoreShell, appBinding, streams)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for i := range streams {
 		restoreArgs = append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
 		restoreShell.Command(NATSCMD, restoreArgs...)

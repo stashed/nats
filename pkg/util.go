@@ -69,6 +69,7 @@ type natsOptions struct {
 	backupSessionName string
 	interimDataDir    string
 	streams           []string
+	overwrite         bool
 	appBindingName    string
 	natsArgs          string
 	waitTimeout       int32
