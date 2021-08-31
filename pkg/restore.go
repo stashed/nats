@@ -137,47 +137,7 @@ func NewCmdRestore() *cobra.Command {
 	cmd.Flags().BoolVar(&opt.overwrite, "overwrite", opt.overwrite, "Specify whether to enable overwriting data by replacing existing streams")
 	return cmd
 }
-func streamExists(s1 string, list []string) bool {
-	for _, s2 := range list {
-		if s2 == s1 {
-			return true
-		}
-	}
-	return false
-}
-func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding, streams []string) error {
-	lsArgs := []interface{}{
-		"stream",
-		"ls",
-		"--json",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
-	}
-	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
-	if err != nil {
-		return err
-	}
-	var currStreams []string
-	if err := json.Unmarshal(byteStreams, &currStreams); err != nil {
-		return err
-	}
-	rmArgs := []interface{}{
-		"stream",
-		"rm",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
-		"-f",
-	}
-	for i := range streams {
-		if streamExists(streams[i], currStreams) {
-			rmArgs = append(rmArgs, streams[i])
-			sh.Command(NATSCMD, rmArgs...)
-			if err := sh.Run(); err != nil {
-				return err
-			}
-			rmArgs = rmArgs[:len(rmArgs)-1]
-		}
-	}
-	return nil
-}
+
 func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.RestoreOutput, error) {
 	// apply nice, ionice settings from env
 	var err error
@@ -208,7 +168,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	// we will restore the desired data into interim data dir before injecting into the desired database
+	// we will restore the desired data into interim data dir before restoring the streams
 	opt.restoreOptions.RestorePaths = []string{opt.interimDataDir}
 
 	// init restic wrapper
@@ -263,14 +223,54 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		}
 	}
 	for i := range streams {
-		restoreArgs = append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-		restoreShell.Command(NATSCMD, restoreArgs...)
+		args := append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		restoreShell.Command(NATSCMD, args...)
 		if err := restoreShell.Run(); err != nil {
 			return nil, err
 		}
-		// remove this stream specific args
-		restoreArgs = restoreArgs[:len(restoreArgs)-2]
 	}
 
 	return restoreOutput, nil
+}
+
+func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding, streams []string) error {
+	lsArgs := []interface{}{
+		"stream",
+		"ls",
+		"--json",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
+	if err != nil {
+		return err
+	}
+	var currStreams []string
+	if err := json.Unmarshal(byteStreams, &currStreams); err != nil {
+		return err
+	}
+	rmArgs := []interface{}{
+		"stream",
+		"rm",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"-f",
+	}
+	for i := range streams {
+		if streamExists(streams[i], currStreams) {
+			args := append(rmArgs, streams[i])
+			sh.Command(NATSCMD, args...)
+			if err := sh.Run(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func streamExists(s1 string, list []string) bool {
+	for _, s2 := range list {
+		if s2 == s1 {
+			return true
+		}
+	}
+	return false
 }

@@ -148,45 +148,7 @@ func NewCmdBackup() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "Names of the streams")
 	return cmd
 }
-func (opt *natsOptions) getStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding) ([]string, error) {
-	if len(opt.streams) == 0 {
-		streamArgs := []interface{}{
-			"stream",
-			"ls",
-			"--json",
-			"--server", appBinding.Spec.ClientConfig.Service.Name,
-		}
 
-		sh.Command(NATSCMD, streamArgs...)
-		err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
-		if err != nil {
-			return nil, err
-		}
-		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
-		if err != nil {
-			return nil, err
-		}
-		var streams []string
-		err = json.Unmarshal(byteStreams, &streams)
-		if err != nil {
-			return nil, err
-		}
-		return streams, nil
-
-	} else {
-		byteStreams, err := json.Marshal(opt.streams)
-		if err != nil {
-			return nil, err
-		}
-
-		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0644)
-		if err != nil {
-			return nil, err
-		}
-		return opt.streams, nil
-	}
-
-}
 func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.BackupOutput, error) {
 	// if any pre-backup actions has been assigned to it, execute them
 	actionOptions := api_util.ActionOptions{
@@ -257,12 +219,11 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	}
 
 	for i := range streams {
-		backupArgs = append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-		backupShell.Command(NATSCMD, backupArgs...)
+		args := append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		backupShell.Command(NATSCMD, args...)
 		if err := backupShell.Run(); err != nil {
 			return nil, err
 		}
-		backupArgs = backupArgs[:len(backupArgs)-2]
 	}
 
 	// data snapshot has been stored in the interim data dir. Now, we will backup this directory using Stash.
@@ -276,4 +237,43 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 	// Run backup
 	return resticWrapper.RunBackup(opt.backupOptions, targetRef)
+}
+
+func (opt *natsOptions) getStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding) ([]string, error) {
+	if len(opt.streams) == 0 {
+		streamArgs := []interface{}{
+			"stream",
+			"ls",
+			"--json",
+			"--server", appBinding.Spec.ClientConfig.Service.Name,
+		}
+
+		sh.Command(NATSCMD, streamArgs...)
+		err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		if err != nil {
+			return nil, err
+		}
+		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		if err != nil {
+			return nil, err
+		}
+		var streams []string
+		err = json.Unmarshal(byteStreams, &streams)
+		if err != nil {
+			return nil, err
+		}
+		return streams, nil
+
+	} else {
+		byteStreams, err := json.Marshal(opt.streams)
+		if err != nil {
+			return nil, err
+		}
+
+		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0644)
+		if err != nil {
+			return nil, err
+		}
+		return opt.streams, nil
+	}
 }
