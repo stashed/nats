@@ -129,12 +129,12 @@ func NewCmdRestore() *cobra.Command {
 
 	cmd.Flags().StringVar(&opt.restoreOptions.Host, "hostname", opt.restoreOptions.Host, "Name of the host machine")
 	cmd.Flags().StringVar(&opt.restoreOptions.SourceHost, "source-hostname", opt.restoreOptions.SourceHost, "Name of the host from where data will be restored")
-	cmd.Flags().StringSliceVar(&opt.restoreOptions.Snapshots, "snapshot", opt.restoreOptions.Snapshots, "Snapshot to dump")
+	cmd.Flags().StringSliceVar(&opt.restoreOptions.Snapshots, "snapshot", opt.restoreOptions.Snapshots, "Snapshot to restore")
 
-	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired database.")
+	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired NATS Server")
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
-	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "Names of the streams")
-	cmd.Flags().BoolVar(&opt.overwrite, "overwrite", opt.overwrite, "Specify whether to enable overwriting data by replacing existing streams")
+	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "List of streams to restore. Keep empty to restore all the backed up streams")
+	cmd.Flags().BoolVar(&opt.overwrite, "overwrite", opt.overwrite, "Specify whether to delete a stream before restoring if it already exist")
 	return cmd
 }
 
