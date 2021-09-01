@@ -18,9 +18,9 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	"stash.appscode.dev/apimachinery/pkg/restic"
@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 	appcatalog "kmodules.xyz/custom-resources/apis/appcatalog/v1alpha1"
 	appcatalog_cs "kmodules.xyz/custom-resources/client/clientset/versioned"
 	v1 "kmodules.xyz/offshoot-api/api/v1"
@@ -46,9 +47,8 @@ func NewCmdRestore() *cobra.Command {
 				EnableCache: false,
 			},
 			waitTimeout: 300,
-			dumpOptions: restic.DumpOptions{
-				Host:     restic.DefaultHost,
-				FileName: NATSDumpFile,
+			restoreOptions: restic.RestoreOptions{
+				Host: restic.DefaultHost,
 			},
 		}
 	)
@@ -92,7 +92,7 @@ func NewCmdRestore() *cobra.Command {
 						Ref: targetRef,
 						Stats: []api_v1beta1.HostRestoreStats{
 							{
-								Hostname: opt.dumpOptions.Host,
+								Hostname: opt.restoreOptions.Host,
 								Phase:    api_v1beta1.HostRestoreFailed,
 								Error:    err.Error(),
 							},
@@ -127,13 +127,14 @@ func NewCmdRestore() *cobra.Command {
 	cmd.Flags().BoolVar(&opt.setupOptions.EnableCache, "enable-cache", opt.setupOptions.EnableCache, "Specify whether to enable caching for restic")
 	cmd.Flags().Int64Var(&opt.setupOptions.MaxConnections, "max-connections", opt.setupOptions.MaxConnections, "Specify maximum concurrent connections for GCS, Azure and B2 backend")
 
-	cmd.Flags().StringVar(&opt.dumpOptions.Host, "hostname", opt.dumpOptions.Host, "Name of the host machine")
-	cmd.Flags().StringVar(&opt.dumpOptions.SourceHost, "source-hostname", opt.dumpOptions.SourceHost, "Name of the host from where data will be restored")
-	// TODO: sliceVar
-	cmd.Flags().StringVar(&opt.dumpOptions.Snapshot, "snapshot", opt.dumpOptions.Snapshot, "Snapshot to dump")
+	cmd.Flags().StringVar(&opt.restoreOptions.Host, "hostname", opt.restoreOptions.Host, "Name of the host machine")
+	cmd.Flags().StringVar(&opt.restoreOptions.SourceHost, "source-hostname", opt.restoreOptions.SourceHost, "Name of the host from where data will be restored")
+	cmd.Flags().StringSliceVar(&opt.restoreOptions.Snapshots, "snapshot", opt.restoreOptions.Snapshots, "Snapshot to restore")
 
+	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the restored data will be stored temporarily before injecting into the desired NATS Server")
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
-
+	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "List of streams to restore. Keep empty to restore all the backed up streams")
+	cmd.Flags().BoolVar(&opt.overwrite, "overwrite", opt.overwrite, "Specify whether to delete a stream before restoring if it already exist")
 	return cmd
 }
 
@@ -155,43 +156,121 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
+	// clear directory
+	klog.Infoln("Cleaning up temporary data directory: ", opt.interimDataDir)
+	if err := clearDir(opt.interimDataDir); err != nil {
+		return nil, err
+	}
+
+	// wait for NATS ready
+	err = opt.waitForNATSReady(appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	// we will restore the desired data into interim data dir before restoring the streams
+	opt.restoreOptions.RestorePaths = []string{opt.interimDataDir}
+
 	// init restic wrapper
 	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
 	if err != nil {
 		return nil, err
 	}
+	// Run restore
+	restoreOutput, err := resticWrapper.RunRestore(opt.restoreOptions, targetRef)
+	if err != nil {
+		return nil, err
+	}
+
+	// run separate shell to perform restore
+	restoreShell := NewSessionWrapper()
+	restoreShell.ShowCMD = true
 
 	// set access credentials
-	err = opt.setCredentials(resticWrapper, appBinding)
+	err = opt.setCredentials(restoreShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
 
-	// setup pipe command
-	restoreCmd := restic.Command{
-		Name: NATSRestoreCMD,
-		Args: []interface{}{
-			"--pipe",
-			"-h", appBinding.Spec.ClientConfig.Service.Name,
-		},
-	}
-	for _, arg := range strings.Fields(opt.natsArgs) {
-		restoreCmd.Args = append(restoreCmd.Args, arg)
-	}
-	// if port is specified, append port in the arguments
-	if appBinding.Spec.ClientConfig.Service.Port != 0 {
-		restoreCmd.Args = append(restoreCmd.Args, "-p", strconv.Itoa(int(appBinding.Spec.ClientConfig.Service.Port)))
-	}
-
-	// wait for DB ready
-	err = opt.waitForDBReady(appBinding)
+	// set TLS
+	err = opt.setTLS(restoreShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
+	restoreArgs := []interface{}{
+		"stream",
+		"restore",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
 
-	// append the restore command to the pipeline
-	opt.dumpOptions.StdoutPipeCommands = append(opt.dumpOptions.StdoutPipeCommands, restoreCmd)
+	var streams []string
+	if len(opt.streams) != 0 {
+		streams = opt.streams
+	} else {
+		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(byteStreams, &streams)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opt.overwrite {
+		err := removeMatchedStreams(restoreShell, appBinding, streams)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for i := range streams {
+		args := append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		restoreShell.Command(NATSCMD, args...)
+		if err := restoreShell.Run(); err != nil {
+			return nil, err
+		}
+	}
 
-	// Run dump
-	return resticWrapper.Dump(opt.dumpOptions, targetRef)
+	return restoreOutput, nil
+}
+
+func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding, streams []string) error {
+	lsArgs := []interface{}{
+		"stream",
+		"ls",
+		"--json",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
+	if err != nil {
+		return err
+	}
+	var currStreams []string
+	if err := json.Unmarshal(byteStreams, &currStreams); err != nil {
+		return err
+	}
+	rmArgs := []interface{}{
+		"stream",
+		"rm",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"-f",
+	}
+	for i := range streams {
+		if streamExists(streams[i], currStreams) {
+			args := append(rmArgs, streams[i])
+			sh.Command(NATSCMD, args...)
+			if err := sh.Run(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func streamExists(s1 string, list []string) bool {
+	for _, s2 := range list {
+		if s2 == s1 {
+			return true
+		}
+	}
+	return false
 }

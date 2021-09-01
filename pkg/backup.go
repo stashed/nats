@@ -18,9 +18,9 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 	appcatalog "kmodules.xyz/custom-resources/apis/appcatalog/v1alpha1"
 	appcatalog_cs "kmodules.xyz/custom-resources/client/clientset/versioned"
 	v1 "kmodules.xyz/offshoot-api/api/v1"
@@ -49,8 +50,7 @@ func NewCmdBackup() *cobra.Command {
 				EnableCache: false,
 			},
 			backupOptions: restic.BackupOptions{
-				Host:          restic.DefaultHost,
-				StdinFileName: NATSDumpFile,
+				Host: restic.DefaultHost,
 			},
 		}
 	)
@@ -110,7 +110,6 @@ func NewCmdBackup() *cobra.Command {
 			}
 
 			return nil
-
 		},
 	}
 
@@ -118,7 +117,7 @@ func NewCmdBackup() *cobra.Command {
 	cmd.Flags().Int32Var(&opt.waitTimeout, "wait-timeout", opt.waitTimeout, "Time limit to wait for the database to be ready")
 
 	cmd.Flags().StringVar(&masterURL, "master", masterURL, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
-	cmd.Flags().StringVar(&kubeconfigPath, "kubeconfig", kubeconfigPath, "Path to kubeconfig file with authorization information (the master location is set by the master flag).")
+	cmd.Flags().StringVar(&kubeconfigPath, "kubeconfig", kubeconfigPath, "Path to kubeconfig file with authorization information (the master location is set by the master flag)")
 	cmd.Flags().StringVar(&opt.namespace, "namespace", "default", "Namespace of Backup/Restore Session")
 	cmd.Flags().StringVar(&opt.backupSessionName, "backupsession", opt.backupSessionName, "Name of the Backup Session")
 	cmd.Flags().StringVar(&opt.appBindingName, "appbinding", opt.appBindingName, "Name of the app binding")
@@ -134,7 +133,6 @@ func NewCmdBackup() *cobra.Command {
 	cmd.Flags().Int64Var(&opt.setupOptions.MaxConnections, "max-connections", opt.setupOptions.MaxConnections, "Specify maximum concurrent connections for GCS, Azure and B2 backend")
 
 	cmd.Flags().StringVar(&opt.backupOptions.Host, "hostname", opt.backupOptions.Host, "Name of the host machine")
-
 	cmd.Flags().Int64Var(&opt.backupOptions.RetentionPolicy.KeepLast, "retention-keep-last", opt.backupOptions.RetentionPolicy.KeepLast, "Specify value for retention strategy")
 	cmd.Flags().Int64Var(&opt.backupOptions.RetentionPolicy.KeepHourly, "retention-keep-hourly", opt.backupOptions.RetentionPolicy.KeepHourly, "Specify value for retention strategy")
 	cmd.Flags().Int64Var(&opt.backupOptions.RetentionPolicy.KeepDaily, "retention-keep-daily", opt.backupOptions.RetentionPolicy.KeepDaily, "Specify value for retention strategy")
@@ -145,8 +143,9 @@ func NewCmdBackup() *cobra.Command {
 	cmd.Flags().BoolVar(&opt.backupOptions.RetentionPolicy.Prune, "retention-prune", opt.backupOptions.RetentionPolicy.Prune, "Specify whether to prune old snapshot data")
 	cmd.Flags().BoolVar(&opt.backupOptions.RetentionPolicy.DryRun, "retention-dry-run", opt.backupOptions.RetentionPolicy.DryRun, "Specify whether to test retention policy without deleting actual data")
 
+	cmd.Flags().StringVar(&opt.interimDataDir, "interim-data-dir", opt.interimDataDir, "Directory where the targeted data will be stored temporarily before uploading to the backend")
 	cmd.Flags().StringVar(&opt.outputDir, "output-dir", opt.outputDir, "Directory where output.json file will be written (keep empty if you don't need to write output in file)")
-
+	cmd.Flags().StringSliceVar(&opt.streams, "streams", opt.streams, "List of streams to backup. Keep empty to backup all streams")
 	return cmd
 }
 
@@ -177,12 +176,58 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	if err != nil {
 		return nil, err
 	}
-
 	// get app binding
 	appBinding, err := opt.catalogClient.AppcatalogV1alpha1().AppBindings(opt.namespace).Get(context.TODO(), opt.appBindingName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
+	// clear directory
+	klog.Infoln("Cleaning up temporary data directory directory: ", opt.interimDataDir)
+	if err := clearDir(opt.interimDataDir); err != nil {
+		return nil, err
+	}
+	// wait for NATS ready
+	err = opt.waitForNATSReady(appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	// run separate shell to perform backup
+	backupShell := NewSessionWrapper()
+	backupShell.ShowCMD = true
+	// set access credentials
+	err = opt.setCredentials(backupShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	// set TLS
+	err = opt.setTLS(backupShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	backupArgs := []interface{}{
+		"stream",
+		"backup",
+		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+
+	streams, err := opt.getStreams(backupShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range streams {
+		args := append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		backupShell.Command(NATSCMD, args...)
+		if err := backupShell.Run(); err != nil {
+			return nil, err
+		}
+	}
+
+	// data snapshot has been stored in the interim data dir. Now, we will backup this directory using Stash.
+	opt.backupOptions.BackupPaths = []string{opt.interimDataDir}
 
 	// init restic wrapper
 	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
@@ -190,37 +235,45 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
-	// set access credentials
-	err = opt.setCredentials(resticWrapper, appBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	// setup pipe command
-	backupCmd := restic.Command{
-		Name: NATSBackupCMD,
-		Args: []interface{}{
-			"-host", appBinding.Spec.ClientConfig.Service.Name,
-		},
-	}
-	for _, arg := range strings.Fields(opt.natsArgs) {
-		backupCmd.Args = append(backupCmd.Args, arg)
-	}
-
-	// if port is specified, append port in the arguments
-	if appBinding.Spec.ClientConfig.Service.Port != 0 {
-		backupCmd.Args = append(backupCmd.Args, "-port", strconv.Itoa(int(appBinding.Spec.ClientConfig.Service.Port)))
-	}
-
-	// wait for DB ready
-	err = opt.waitForDBReady(appBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	// add backup command in the pipeline
-	opt.backupOptions.StdinPipeCommands = append(opt.backupOptions.StdinPipeCommands, backupCmd)
-
 	// Run backup
 	return resticWrapper.RunBackup(opt.backupOptions, targetRef)
+}
+
+func (opt *natsOptions) getStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding) ([]string, error) {
+	if len(opt.streams) == 0 {
+		streamArgs := []interface{}{
+			"stream",
+			"ls",
+			"--json",
+			"--server", appBinding.Spec.ClientConfig.Service.Name,
+		}
+
+		sh.Command(NATSCMD, streamArgs...)
+		err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		if err != nil {
+			return nil, err
+		}
+		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		if err != nil {
+			return nil, err
+		}
+		var streams []string
+		err = json.Unmarshal(byteStreams, &streams)
+		if err != nil {
+			return nil, err
+		}
+		return streams, nil
+
+	} else {
+		byteStreams, err := json.Marshal(opt.streams)
+		if err != nil {
+			return nil, err
+		}
+
+		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0644)
+		if err != nil {
+			return nil, err
+		}
+		return opt.streams, nil
+	}
 }
