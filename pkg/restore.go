@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	"stash.appscode.dev/apimachinery/pkg/restic"
@@ -201,6 +202,9 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		"stream",
 		"restore",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+	for _, arg := range strings.Fields(opt.natsArgs) {
+		restoreArgs = append(restoreArgs, arg)
 	}
 
 	var streams []string
