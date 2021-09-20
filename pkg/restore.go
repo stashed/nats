@@ -186,13 +186,11 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	// run separate shell to perform restore
 	restoreShell := NewSessionWrapper()
 	restoreShell.ShowCMD = true
-
 	// set access credentials
 	err = opt.setCredentials(restoreShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
-
 	// set TLS
 	err = opt.setTLS(restoreShell, appBinding)
 	if err != nil {

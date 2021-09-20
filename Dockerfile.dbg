@@ -19,12 +19,16 @@ ENV DEBCONF_NONINTERACTIVE_SEEN true
 
 RUN set -x \
   && apt-get update \
-  && apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl bzip2
+  && apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl bzip2 unzip
 
 RUN set -x \
   && curl -fsSL -o restic.bz2 https://github.com/stashed/restic/releases/download/v{RESTIC_VER}/restic_{RESTIC_VER}_{ARG_OS}_{ARG_ARCH}.bz2 \
   && bzip2 -d restic.bz2 \
   && chmod 755 restic
+
+RUN set -x \
+  && curl -fsSL -o nats.zip https://github.com/nats-io/natscli/releases/download/{NATS_CLI_VER}/nats-{NATS_CLI_VER}-linux-amd64.zip \
+  && unzip nats.zip
 
 FROM {ARG_FROM}
 
@@ -32,19 +36,17 @@ LABEL org.opencontainers.image.source https://github.com/stashed/nats
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
+ENV USER nobody
 
 RUN set -x \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates wget \
-  && wget https://github.com/nats-io/natscli/releases/download/0.0.26/nats-0.0.26-amd64.deb \
-  && dpkg -i nats-0.0.26-amd64.deb \
-  && rm nats-0.0.26-amd64.deb \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /tmp/*
 
-COPY --from=0 restic /bin/restic
+COPY --from=0 /restic /bin/restic
+COPY --from=0 /nats-{NATS_CLI_VER}-linux-amd64/nats /bin/nats
 COPY bin/{ARG_OS}_{ARG_ARCH}/{ARG_BIN} /{ARG_BIN}
 
-ENV USER=nobody
 USER nobody
 
 ENTRYPOINT ["/{ARG_BIN}"]

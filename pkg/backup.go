@@ -195,13 +195,11 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	// run separate shell to perform backup
 	backupShell := NewSessionWrapper()
 	backupShell.ShowCMD = true
-
 	// set access credentials
 	err = opt.setCredentials(backupShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
-
 	// set TLS
 	err = opt.setTLS(backupShell, appBinding)
 	if err != nil {
