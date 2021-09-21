@@ -42,8 +42,8 @@ else
 	endif
 endif
 
-RESTIC_VER       := 0.12.0-ac.20210727
-
+RESTIC_VER := 0.12.0-ac.20210727
+NATS_CLI_VER := 0.0.26
 ###
 ### These variables should not need tweaking.
 ###
@@ -58,8 +58,8 @@ BIN_PLATFORMS    := $(DOCKER_PLATFORMS)
 OS   := $(if $(GOOS),$(GOOS),$(shell go env GOOS))
 ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 
-BASEIMAGE_PROD   ?= natsio/nats-box:0.6.0
-BASEIMAGE_DBG    ?= natsio/nats-box:0.6.0
+BASEIMAGE_PROD   ?= debian:bullseye
+BASEIMAGE_DBG    ?= debian:bullseye
 
 IMAGE            := $(REGISTRY)/$(BIN)
 VERSION_PROD     := $(VERSION)
@@ -222,6 +222,7 @@ bin/.container-$(DOTFILE_IMAGE)-%: bin/$(OS)_$(ARCH)/$(BIN) $(DOCKERFILE_%)
 		-e 's|{ARG_OS}|$(OS)|g'                     \
 		-e 's|{ARG_FROM}|$(BASEIMAGE_$*)|g'         \
 		-e 's|{RESTIC_VER}|$(RESTIC_VER)|g'         \
+		-e 's|{NATS_CLI_VER}|$(NATS_CLI_VER)|g'     \
 		$(DOCKERFILE_$*) > bin/.dockerfile-$*-$(OS)_$(ARCH)
 	@DOCKER_CLI_EXPERIMENTAL=enabled docker buildx build --platform $(OS)/$(ARCH) --load --pull -t $(IMAGE):$(TAG_$*) -f bin/.dockerfile-$*-$(OS)_$(ARCH) .
 	@docker images -q $(IMAGE):$(TAG_$*) > $@

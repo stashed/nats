@@ -126,7 +126,7 @@ func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) erro
 	}
 
 	return wait.PollImmediate(time.Second*5, time.Minute*5, func() (bool, error) {
-		err := sh.Command("nats", args...).Run()
+		err := sh.Command(NATSCMD, args...).Run()
 		if err != nil {
 			return false, nil
 		}

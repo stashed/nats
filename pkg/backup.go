@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -108,7 +109,6 @@ func NewCmdBackup() *cobra.Command {
 			if opt.outputDir != "" {
 				return backupOutput.WriteOutput(filepath.Join(opt.outputDir, restic.DefaultOutputFileName))
 			}
-
 			return nil
 		},
 	}
@@ -200,7 +200,6 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	if err != nil {
 		return nil, err
 	}
-
 	// set TLS
 	err = opt.setTLS(backupShell, appBinding)
 	if err != nil {
@@ -212,12 +211,13 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		"backup",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
 	}
-
+	for _, arg := range strings.Fields(opt.natsArgs) {
+		backupArgs = append(backupArgs, arg)
+	}
 	streams, err := opt.getStreams(backupShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
-
 	for i := range streams {
 		args := append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
 		backupShell.Command(NATSCMD, args...)

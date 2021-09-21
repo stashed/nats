@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	"stash.appscode.dev/apimachinery/pkg/restic"
@@ -185,13 +186,11 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	// run separate shell to perform restore
 	restoreShell := NewSessionWrapper()
 	restoreShell.ShowCMD = true
-
 	// set access credentials
 	err = opt.setCredentials(restoreShell, appBinding)
 	if err != nil {
 		return nil, err
 	}
-
 	// set TLS
 	err = opt.setTLS(restoreShell, appBinding)
 	if err != nil {
@@ -201,6 +200,9 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		"stream",
 		"restore",
 		"--server", appBinding.Spec.ClientConfig.Service.Name,
+	}
+	for _, arg := range strings.Fields(opt.natsArgs) {
+		restoreArgs = append(restoreArgs, arg)
 	}
 
 	var streams []string
