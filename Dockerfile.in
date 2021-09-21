@@ -44,7 +44,7 @@ RUN set -x \
   && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /tmp/*
 
 COPY --from=0 /restic /bin/restic
-COPY --from=0 /nats-{NATS_CLI_VER}-linux-amd64/nats /bin/nats
+COPY --from=0 /nats-{NATS_CLI_VER}-{ARG_OS}-{ARG_ARCH}/nats /bin/nats
 COPY bin/{ARG_OS}_{ARG_ARCH}/{ARG_BIN} /{ARG_BIN}
 
 USER nobody
