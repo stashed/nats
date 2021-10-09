@@ -4,17 +4,19 @@ go 1.15
 
 require (
 	github.com/spf13/cobra v1.1.3
-	go.bytebuilders.dev/license-verifier/kubernetes v0.9.2
-	gomodules.xyz/flags v0.1.0
+	go.bytebuilders.dev/license-verifier/kubernetes v0.9.3
+	golang.org/x/crypto v0.0.0-20210314154223-e6e6c4f2bb5b // indirect
+	gomodules.xyz/flags v0.1.2
 	gomodules.xyz/go-sh v0.1.0
-	gomodules.xyz/logs v0.0.3
-	gomodules.xyz/x v0.0.5
+	gomodules.xyz/logs v0.0.4
+	gomodules.xyz/x v0.0.8
 	k8s.io/apimachinery v0.21.1
 	k8s.io/client-go v0.21.1
 	k8s.io/klog/v2 v2.8.0
-	kmodules.xyz/client-go v0.0.0-20210719120358-dd0503cf99cf
-	kmodules.xyz/custom-resources v0.0.0-20210618003440-c6bb400da153
-	kmodules.xyz/offshoot-api v0.0.0-20210618005544-5217a24765da
+	kmodules.xyz/client-go v0.0.0-20210928133955-8df5bb467db6
+	kmodules.xyz/custom-resources v0.0.0-20211007080833-72bd9e8cae6e
+	kmodules.xyz/objectstore-api v0.0.0-20210928135706-fdf68f88ea6e // indirect
+	kmodules.xyz/offshoot-api v0.0.0-20210829122105-6f4d481b0c61
 	stash.appscode.dev/apimachinery v0.15.0
 )
 
@@ -123,3 +125,5 @@ replace k8s.io/utils => k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 replace sigs.k8s.io/application => github.com/kmodules/application v0.8.4-0.20210427030912-90eeee3bc4ad
 
 replace github.com/satori/go.uuid => github.com/gofrs/uuid v4.0.0+incompatible
+
+replace github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt v3.2.1+incompatible
