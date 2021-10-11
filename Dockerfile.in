@@ -27,7 +27,7 @@ RUN set -x \
   && chmod 755 restic
 
 RUN set -x \
-  && curl -fsSL -o nats.zip https://github.com/nats-io/natscli/releases/download/{NATS_CLI_VER}/nats-{NATS_CLI_VER}-linux-amd64.zip \
+  && curl -fsSL -o nats.zip https://github.com/nats-io/natscli/releases/download/{NATS_CLI_VER}/nats-{NATS_CLI_VER}-{ARG_OS}-{ARG_ARCH}.zip \
   && unzip nats.zip
 
 FROM {ARG_FROM}
