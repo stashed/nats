@@ -37,27 +37,28 @@ import (
 )
 
 const (
-	NATSUser        = "username"
-	NATSCreds       = "creds"
-	NATSPassword    = "password"
-	NATSToken       = "token"
-	NATSNkey        = "nkey"
-	NATSCMD         = "nats"
-	NATSCert        = "tls.crt"
-	NATSKey         = "tls.key"
-	NATSStreamsFile = "streams.json"
-	NATSCredsFile   = "user.creds"
-	NATSCACertFile  = "ca.crt"
-	NATSNkeyFile    = "user.nk"
-	NATSCertFile    = "tls.crt"
-	NATSKeyFile     = "tls.key"
-	EnvNATSUser     = "NATS_USER"
-	EnvNATSPassword = "NATS_PASSWORD"
-	EnvNATSCreds    = "NATS_CREDS"
-	EnvNATSCA       = "NATS_CA"
-	EnvNATSNkey     = "NATS_NKEY"
-	EnvNATSCert     = "NATS_CERT"
-	EnvNATSKey      = "NATS_KEY"
+	NATSUser         = "username"
+	NATSCreds        = "creds"
+	NATSPassword     = "password"
+	NATSToken        = "token"
+	NATSNkey         = "nkey"
+	NATSCMD          = "nats"
+	NATSCert         = "tls.crt"
+	NATSKey          = "tls.key"
+	NATSStreamsFile  = "streams.json"
+	NATSCredsFile    = "user.creds"
+	NATSCACertFile   = "ca.crt"
+	NATSNkeyFile     = "user.nk"
+	NATSCertFile     = "tls.crt"
+	NATSKeyFile      = "tls.key"
+	EnvNATSUser      = "NATS_USER"
+	EnvNATSPassword  = "NATS_PASSWORD"
+	EnvNATSCreds     = "NATS_CREDS"
+	EnvNATSCA        = "NATS_CA"
+	EnvNATSNkey      = "NATS_NKEY"
+	EnvNATSCert      = "NATS_CERT"
+	EnvNATSKey       = "NATS_KEY"
+	StorageSecretDir = "storage-secret"
 )
 
 type natsOptions struct {
@@ -74,12 +75,15 @@ type natsOptions struct {
 	natsArgs          string
 	waitTimeout       int32
 	outputDir         string
-
-	setupOptions   restic.SetupOptions
-	backupOptions  restic.BackupOptions
-	restoreOptions restic.RestoreOptions
+	storageInfo       storageSecret
+	setupOptions      restic.SetupOptions
+	backupOptions     restic.BackupOptions
+	restoreOptions    restic.RestoreOptions
 }
-
+type storageSecret struct {
+	name      string
+	namespace string
+}
 type Shell interface {
 	SetEnv(key, value string)
 }
