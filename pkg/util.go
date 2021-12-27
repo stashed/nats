@@ -111,14 +111,20 @@ func clearDir(dir string) error {
 func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) error {
 	klog.Infoln("Waiting for the nats server to be ready.....")
 	sh := NewSessionWrapper()
+
+	host, err := appBinding.Host()
+	if err != nil {
+		return err
+	}
+
 	args := []interface{}{
 		"server",
 		"check",
 		"connection",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--server", host,
 	}
 
-	err := opt.setTLS(sh, appBinding)
+	err = opt.setTLS(sh, appBinding)
 	if err != nil {
 		return err
 	}

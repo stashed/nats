@@ -170,7 +170,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	// wait for NATS ready
+	// wait for NATS server to be ready
 	err = opt.waitForNATSReady(appBinding)
 	if err != nil {
 		return nil, err
@@ -203,10 +203,16 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	if err != nil {
 		return nil, err
 	}
+
+	host, err := appBinding.Host()
+	if err != nil {
+		return nil, err
+	}
+
 	restoreArgs := []interface{}{
 		"stream",
 		"restore",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--server", host,
 	}
 	for _, arg := range strings.Fields(opt.natsArgs) {
 		restoreArgs = append(restoreArgs, arg)
@@ -226,7 +232,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		}
 	}
 	if opt.overwrite {
-		err := removeMatchedStreams(restoreShell, appBinding, streams)
+		err := removeMatchedStreams(restoreShell, host, streams)
 		if err != nil {
 			return nil, err
 		}
@@ -242,12 +248,12 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	return restoreOutput, nil
 }
 
-func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding, streams []string) error {
+func removeMatchedStreams(sh *SessionWrapper, host string, streams []string) error {
 	lsArgs := []interface{}{
 		"stream",
 		"ls",
 		"--json",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--server", host,
 	}
 	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
 	if err != nil {
@@ -260,7 +266,7 @@ func removeMatchedStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding,
 	rmArgs := []interface{}{
 		"stream",
 		"rm",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--server", host,
 		"-f",
 	}
 	for i := range streams {

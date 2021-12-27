@@ -200,6 +200,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	if err := clearDir(opt.interimDataDir); err != nil {
 		return nil, err
 	}
+
 	// wait for NATS to be ready
 	err = opt.waitForNATSReady(appBinding)
 	if err != nil {
@@ -220,15 +221,20 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
+	host, err := appBinding.Host()
+	if err != nil {
+		return nil, err
+	}
+
 	backupArgs := []interface{}{
 		"stream",
 		"backup",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--server", host,
 	}
 	for _, arg := range strings.Fields(opt.natsArgs) {
 		backupArgs = append(backupArgs, arg)
 	}
-	streams, err := opt.getStreams(backupShell, appBinding)
+	streams, err := opt.getStreams(backupShell, host)
 	if err != nil {
 		return nil, err
 	}
@@ -253,13 +259,14 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	return resticWrapper.RunBackup(opt.backupOptions, targetRef)
 }
 
-func (opt *natsOptions) getStreams(sh *SessionWrapper, appBinding *appcatalog.AppBinding) ([]string, error) {
+func (opt *natsOptions) getStreams(sh *SessionWrapper, host string) ([]string, error) {
 	if len(opt.streams) == 0 {
+
 		streamArgs := []interface{}{
 			"stream",
 			"ls",
 			"--json",
-			"--server", appBinding.Spec.ClientConfig.Service.Name,
+			"--server", host,
 		}
 
 		sh.Command(NATSCMD, streamArgs...)
