@@ -115,7 +115,7 @@ func NewCmdBackup() *cobra.Command {
 
 	cmd.Flags().StringVar(&opt.natsArgs, "nats-args", opt.natsArgs, "Additional arguments")
 	cmd.Flags().Int32Var(&opt.waitTimeout, "wait-timeout", opt.waitTimeout, "Time limit to wait for the database to be ready")
-	cmd.Flags().StringVar(&opt.warnThreshold, "warn-threshold", opt.warnThreshold, "Warning threshold to allow for establishing connections")
+	cmd.Flags().StringVar(&opt.warningThreshold, "warning-threshold", opt.warningThreshold, "Warning threshold to allow for establishing connections")
 
 	cmd.Flags().StringVar(&masterURL, "master", masterURL, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	cmd.Flags().StringVar(&kubeconfigPath, "kubeconfig", kubeconfigPath, "Path to kubeconfig file with authorization information (the master location is set by the master flag)")

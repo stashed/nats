@@ -75,7 +75,7 @@ type natsOptions struct {
 	appBindingName    string
 	natsArgs          string
 	waitTimeout       int32
-	warnThreshold     string
+	warningThreshold  string
 	outputDir         string
 	storageSecret     kmapi.ObjectReference
 	setupOptions      restic.SetupOptions
@@ -120,7 +120,7 @@ func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) erro
 		"server",
 		"check",
 		"connection",
-		"--connect-warn", opt.warnThreshold,
+		"--connect-warn", opt.warningThreshold,
 	}
 
 	opt.setServerUrl(sh, host)
