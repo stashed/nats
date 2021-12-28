@@ -32,33 +32,34 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	kmapi "kmodules.xyz/client-go/api/v1"
 	appcatalog "kmodules.xyz/custom-resources/apis/appcatalog/v1alpha1"
 	appcatalog_cs "kmodules.xyz/custom-resources/client/clientset/versioned"
 )
 
 const (
-	NATSUser         = "username"
-	NATSCreds        = "creds"
-	NATSPassword     = "password"
-	NATSToken        = "token"
-	NATSNkey         = "nkey"
-	NATSCMD          = "nats"
-	NATSCert         = "tls.crt"
-	NATSKey          = "tls.key"
-	NATSStreamsFile  = "streams.json"
-	NATSCredsFile    = "user.creds"
-	NATSCACertFile   = "ca.crt"
-	NATSNkeyFile     = "user.nk"
-	NATSCertFile     = "tls.crt"
-	NATSKeyFile      = "tls.key"
-	EnvNATSUser      = "NATS_USER"
-	EnvNATSPassword  = "NATS_PASSWORD"
-	EnvNATSCreds     = "NATS_CREDS"
-	EnvNATSCA        = "NATS_CA"
-	EnvNATSNkey      = "NATS_NKEY"
-	EnvNATSCert      = "NATS_CERT"
-	EnvNATSKey       = "NATS_KEY"
-	StorageSecretDir = "storage-secret"
+	NATSUser        = "username"
+	NATSCreds       = "creds"
+	NATSPassword    = "password"
+	NATSToken       = "token"
+	NATSNkey        = "nkey"
+	NATSCMD         = "nats"
+	NATSCert        = "tls.crt"
+	NATSKey         = "tls.key"
+	NATSStreamsFile = "streams.json"
+	NATSCredsFile   = "user.creds"
+	NATSCACertFile  = "ca.crt"
+	NATSNkeyFile    = "user.nk"
+	NATSCertFile    = "tls.crt"
+	NATSKeyFile     = "tls.key"
+	EnvNATSUrl      = "NATS_URL"
+	EnvNATSUser     = "NATS_USER"
+	EnvNATSPassword = "NATS_PASSWORD"
+	EnvNATSCreds    = "NATS_CREDS"
+	EnvNATSCA       = "NATS_CA"
+	EnvNATSNkey     = "NATS_NKEY"
+	EnvNATSCert     = "NATS_CERT"
+	EnvNATSKey      = "NATS_KEY"
 )
 
 type natsOptions struct {
@@ -74,16 +75,14 @@ type natsOptions struct {
 	appBindingName    string
 	natsArgs          string
 	waitTimeout       int32
+	warnThreshold     string
 	outputDir         string
-	storageInfo       storageSecret
+	storageSecret     kmapi.ObjectReference
 	setupOptions      restic.SetupOptions
 	backupOptions     restic.BackupOptions
 	restoreOptions    restic.RestoreOptions
 }
-type storageSecret struct {
-	name      string
-	namespace string
-}
+
 type Shell interface {
 	SetEnv(key, value string)
 }
@@ -97,6 +96,7 @@ func NewSessionWrapper() *SessionWrapper {
 		shell.NewSession(),
 	}
 }
+
 func (wrapper *SessionWrapper) SetEnv(key, value string) {
 	wrapper.Session.SetEnv(key, value)
 }
@@ -116,14 +116,14 @@ func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) erro
 	if err != nil {
 		return err
 	}
-
 	args := []interface{}{
 		"server",
 		"check",
 		"connection",
-		"--server", host,
+		"--connect-warn", opt.warnThreshold,
 	}
 
+	opt.setServerUrl(sh, host)
 	err = opt.setTLS(sh, appBinding)
 	if err != nil {
 		return err
@@ -143,6 +143,11 @@ func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) erro
 		return true, nil
 	})
 }
+
+func (opt *natsOptions) setServerUrl(sh Shell, host string) {
+	sh.SetEnv(EnvNATSUrl, host)
+}
+
 func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) error {
 	if appBinding.Spec.ClientConfig.CABundle == nil {
 		return nil
@@ -154,6 +159,7 @@ func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) erro
 	sh.SetEnv(EnvNATSCA, filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
 	return nil
 }
+
 func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {

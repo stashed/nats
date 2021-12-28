@@ -112,13 +112,14 @@ func NewCmdRestore() *cobra.Command {
 
 	cmd.Flags().StringVar(&opt.natsArgs, "nats-args", opt.natsArgs, "Additional arguments")
 	cmd.Flags().Int32Var(&opt.waitTimeout, "wait-timeout", opt.waitTimeout, "Time limit to wait for the database to be ready")
+	cmd.Flags().StringVar(&opt.warnThreshold, "warn-threshold", opt.warnThreshold, "Warning threshold to allow for establishing connections")
 
 	cmd.Flags().StringVar(&masterURL, "master", masterURL, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	cmd.Flags().StringVar(&kubeconfigPath, "kubeconfig", kubeconfigPath, "Path to kubeconfig file with authorization information (the master location is set by the master flag).")
 	cmd.Flags().StringVar(&opt.namespace, "namespace", "default", "Namespace of Backup/Restore Session")
 	cmd.Flags().StringVar(&opt.appBindingName, "appbinding", opt.appBindingName, "Name of the app binding")
-	cmd.Flags().StringVar(&opt.storageInfo.name, "secret-name", opt.storageInfo.name, "Name of the storage secret")
-	cmd.Flags().StringVar(&opt.storageInfo.namespace, "secret-namespace", opt.storageInfo.namespace, "Namespace of the storage secret")
+	cmd.Flags().StringVar(&opt.storageSecret.Name, "storage-secret-name", opt.storageSecret.Name, "Name of the storage secret")
+	cmd.Flags().StringVar(&opt.storageSecret.Namespace, "storage-secret-namespace", opt.storageSecret.Namespace, "Namespace of the storage secret")
 
 	cmd.Flags().StringVar(&opt.setupOptions.Provider, "provider", opt.setupOptions.Provider, "Backend provider (i.e. gcs, s3, azure etc)")
 	cmd.Flags().StringVar(&opt.setupOptions.Bucket, "bucket", opt.setupOptions.Bucket, "Name of the cloud bucket/container (keep empty for local backend)")
@@ -141,9 +142,8 @@ func NewCmdRestore() *cobra.Command {
 }
 
 func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.RestoreOutput, error) {
-	// get storage secret
 	var err error
-	opt.setupOptions.StorageSecret, err = opt.kubeClient.CoreV1().Secrets(opt.storageInfo.namespace).Get(context.TODO(), opt.storageInfo.name, metav1.GetOptions{})
+	opt.setupOptions.StorageSecret, err = opt.kubeClient.CoreV1().Secrets(opt.storageSecret.Namespace).Get(context.TODO(), opt.storageSecret.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -158,19 +158,16 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	// get app binding
 	appBinding, err := opt.catalogClient.AppcatalogV1alpha1().AppBindings(opt.namespace).Get(context.TODO(), opt.appBindingName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	// clear directory
 	klog.Infoln("Cleaning up temporary data directory: ", opt.interimDataDir)
 	if err := clearDir(opt.interimDataDir); err != nil {
 		return nil, err
 	}
 
-	// wait for NATS server to be ready
 	err = opt.waitForNATSReady(appBinding)
 	if err != nil {
 		return nil, err
@@ -179,27 +176,12 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	// we will restore the desired data into interim data dir before restoring the streams
 	opt.restoreOptions.RestorePaths = []string{opt.interimDataDir}
 
-	// init restic wrapper
 	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
 	if err != nil {
 		return nil, err
 	}
-	// Run restore
-	restoreOutput, err := resticWrapper.RunRestore(opt.restoreOptions, targetRef)
-	if err != nil {
-		return nil, err
-	}
 
-	// run separate shell to perform restore
-	restoreShell := NewSessionWrapper()
-	restoreShell.ShowCMD = true
-	// set access credentials
-	err = opt.setCredentials(restoreShell, appBinding)
-	if err != nil {
-		return nil, err
-	}
-	// set TLS
-	err = opt.setTLS(restoreShell, appBinding)
+	restoreOutput, err := resticWrapper.RunRestore(opt.restoreOptions, targetRef)
 	if err != nil {
 		return nil, err
 	}
@@ -209,10 +191,25 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
+	// run separate shell to perform restore
+	restoreShell := NewSessionWrapper()
+	restoreShell.ShowCMD = true
+
+	opt.setServerUrl(restoreShell, host)
+
+	err = opt.setCredentials(restoreShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	err = opt.setTLS(restoreShell, appBinding)
+	if err != nil {
+		return nil, err
+	}
+
 	restoreArgs := []interface{}{
 		"stream",
 		"restore",
-		"--server", host,
 	}
 	for _, arg := range strings.Fields(opt.natsArgs) {
 		restoreArgs = append(restoreArgs, arg)
@@ -232,7 +229,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		}
 	}
 	if opt.overwrite {
-		err := removeMatchedStreams(restoreShell, host, streams)
+		err := removeMatchedStreams(restoreShell, streams)
 		if err != nil {
 			return nil, err
 		}
@@ -248,12 +245,11 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	return restoreOutput, nil
 }
 
-func removeMatchedStreams(sh *SessionWrapper, host string, streams []string) error {
+func removeMatchedStreams(sh *SessionWrapper, streams []string) error {
 	lsArgs := []interface{}{
 		"stream",
 		"ls",
 		"--json",
-		"--server", host,
 	}
 	byteStreams, err := sh.Command(NATSCMD, lsArgs...).Output()
 	if err != nil {
@@ -266,7 +262,6 @@ func removeMatchedStreams(sh *SessionWrapper, host string, streams []string) err
 	rmArgs := []interface{}{
 		"stream",
 		"rm",
-		"--server", host,
 		"-f",
 	}
 	for i := range streams {
