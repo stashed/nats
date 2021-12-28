@@ -47,7 +47,8 @@ func NewCmdRestore() *cobra.Command {
 				ScratchDir:  restic.DefaultScratchDir,
 				EnableCache: false,
 			},
-			waitTimeout: 300,
+			waitTimeout:      300,
+			warningThreshold: "30s",
 			restoreOptions: restic.RestoreOptions{
 				Host: restic.DefaultHost,
 			},
@@ -56,10 +57,10 @@ func NewCmdRestore() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:               "restore-nats",
-		Short:             "Restores NATS DB Backup",
+		Short:             "Restores NATS Backup",
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flags.EnsureRequiredFlags(cmd, "appbinding", "provider")
+			flags.EnsureRequiredFlags(cmd, "appbinding", "provider", "storage-secret-name", "storage-secret-namespace")
 
 			// prepare client
 			config, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfigPath)

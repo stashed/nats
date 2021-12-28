@@ -45,7 +45,8 @@ func NewCmdBackup() *cobra.Command {
 		masterURL      string
 		kubeconfigPath string
 		opt            = natsOptions{
-			waitTimeout: 300,
+			waitTimeout:      300,
+			warningThreshold: "30s",
 			setupOptions: restic.SetupOptions{
 				ScratchDir:  restic.DefaultScratchDir,
 				EnableCache: false,
@@ -58,10 +59,10 @@ func NewCmdBackup() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:               "backup-nats",
-		Short:             "Takes a backup of NATS DB",
+		Short:             "Takes a backup of NATS streams",
 		DisableAutoGenTag: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flags.EnsureRequiredFlags(cmd, "appbinding", "provider")
+			flags.EnsureRequiredFlags(cmd, "appbinding", "provider", "storage-secret-name", "storage-secret-namespace")
 
 			// prepare client
 			config, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfigPath)
