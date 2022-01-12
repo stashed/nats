@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	kmapi "kmodules.xyz/client-go/api/v1"
 	appcatalog "kmodules.xyz/custom-resources/apis/appcatalog/v1alpha1"
 	appcatalog_cs "kmodules.xyz/custom-resources/client/clientset/versioned"
 )
@@ -51,6 +52,7 @@ const (
 	NATSNkeyFile    = "user.nk"
 	NATSCertFile    = "tls.crt"
 	NATSKeyFile     = "tls.key"
+	EnvNATSUrl      = "NATS_URL"
 	EnvNATSUser     = "NATS_USER"
 	EnvNATSPassword = "NATS_PASSWORD"
 	EnvNATSCreds    = "NATS_CREDS"
@@ -73,11 +75,12 @@ type natsOptions struct {
 	appBindingName    string
 	natsArgs          string
 	waitTimeout       int32
+	warningThreshold  string
 	outputDir         string
-
-	setupOptions   restic.SetupOptions
-	backupOptions  restic.BackupOptions
-	restoreOptions restic.RestoreOptions
+	storageSecret     kmapi.ObjectReference
+	setupOptions      restic.SetupOptions
+	backupOptions     restic.BackupOptions
+	restoreOptions    restic.RestoreOptions
 }
 
 type Shell interface {
@@ -93,6 +96,7 @@ func NewSessionWrapper() *SessionWrapper {
 		shell.NewSession(),
 	}
 }
+
 func (wrapper *SessionWrapper) SetEnv(key, value string) {
 	wrapper.Session.SetEnv(key, value)
 }
@@ -107,14 +111,20 @@ func clearDir(dir string) error {
 func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) error {
 	klog.Infoln("Waiting for the nats server to be ready.....")
 	sh := NewSessionWrapper()
+
+	host, err := appBinding.Host()
+	if err != nil {
+		return err
+	}
 	args := []interface{}{
 		"server",
 		"check",
 		"connection",
-		"--server", appBinding.Spec.ClientConfig.Service.Name,
+		"--connect-warn", opt.warningThreshold,
 	}
 
-	err := opt.setTLS(sh, appBinding)
+	opt.setServerUrl(sh, host)
+	err = opt.setTLS(sh, appBinding)
 	if err != nil {
 		return err
 	}
@@ -133,6 +143,11 @@ func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) erro
 		return true, nil
 	})
 }
+
+func (opt *natsOptions) setServerUrl(sh Shell, host string) {
+	sh.SetEnv(EnvNATSUrl, host)
+}
+
 func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) error {
 	if appBinding.Spec.ClientConfig.CABundle == nil {
 		return nil
@@ -144,6 +159,7 @@ func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) erro
 	sh.SetEnv(EnvNATSCA, filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
 	return nil
 }
+
 func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {
