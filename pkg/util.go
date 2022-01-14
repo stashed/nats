@@ -84,20 +84,6 @@ type natsOptions struct {
 	restoreOptions    restic.RestoreOptions
 }
 
-//type Shell interface {
-//	SetEnv(key, value string)
-//}
-
-//type SessionWrapper struct {
-//	*shell.Session
-//}
-//
-//func NewSessionWrapper() *SessionWrapper {
-//	return &SessionWrapper{
-//		shell.NewSession(),
-//	}
-//}
-
 type sessionWrapper struct {
 	sh  *shell.Session
 	cmd *restic.Command
