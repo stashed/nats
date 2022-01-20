@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -83,110 +84,43 @@ type natsOptions struct {
 	restoreOptions    restic.RestoreOptions
 }
 
-type Shell interface {
-	SetEnv(key, value string)
+type sessionWrapper struct {
+	sh  *shell.Session
+	cmd *restic.Command
 }
 
-type SessionWrapper struct {
-	*shell.Session
-}
-
-func NewSessionWrapper() *SessionWrapper {
-	return &SessionWrapper{
-		shell.NewSession(),
+func (opt *natsOptions) newSessionWrapper(cmd string) *sessionWrapper {
+	return &sessionWrapper{
+		sh: shell.NewSession(),
+		cmd: &restic.Command{
+			Name: cmd,
+		},
 	}
 }
-
-func (wrapper *SessionWrapper) SetEnv(key, value string) {
-	wrapper.Session.SetEnv(key, value)
-}
-
-func clearDir(dir string) error {
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("unable to clean datadir: %v. Reason: %v", dir, err)
-	}
-	return os.MkdirAll(dir, os.ModePerm)
-}
-
-func (opt *natsOptions) waitForNATSReady(appBinding *appcatalog.AppBinding) error {
-	klog.Infoln("Waiting for the nats server to be ready.....")
-	sh := NewSessionWrapper()
-
-	host, err := appBinding.Host()
-	if err != nil {
-		return err
-	}
-	args := []interface{}{
-		"server",
-		"check",
-		"connection",
-		"--connect-warn", opt.warningThreshold,
-	}
-
-	opt.setServerUrl(sh, host)
-	err = opt.setTLS(sh, appBinding)
-	if err != nil {
-		return err
-	}
-
-	// set access credentials
-	err = opt.setCredentials(sh, appBinding)
-	if err != nil {
-		return err
-	}
-
-	return wait.PollImmediate(time.Second*5, time.Minute*5, func() (bool, error) {
-		err := sh.Command(NATSCMD, args...).Run()
-		if err != nil {
-			return false, nil
-		}
-		return true, nil
-	})
-}
-
-func (opt *natsOptions) setServerUrl(sh Shell, host string) {
-	sh.SetEnv(EnvNATSUrl, host)
-}
-
-func (opt *natsOptions) setTLS(sh Shell, appBinding *appcatalog.AppBinding) error {
-	if appBinding.Spec.ClientConfig.CABundle == nil {
-		return nil
-	}
-
-	if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
-		return err
-	}
-	sh.SetEnv(EnvNATSCA, filepath.Join(opt.setupOptions.ScratchDir, NATSCACertFile))
-	return nil
-}
-
-func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBinding) error {
+func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {
 		return nil
 	}
 
-	// get the Secret
-	secret, err := opt.kubeClient.CoreV1().Secrets(opt.namespace).Get(context.TODO(), appBinding.Spec.Secret.Name, metav1.GetOptions{})
+	appBindingSecret, err := opt.kubeClient.CoreV1().Secrets(appBinding.Namespace).Get(context.TODO(), appBinding.Spec.Secret.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	// perform necessary transform if secretTransforms section is provided in the AppBinding
-	err = appBinding.TransformSecret(opt.kubeClient, secret.Data)
+	err = appBinding.TransformSecret(opt.kubeClient, appBindingSecret.Data)
 	if err != nil {
 		return err
 	}
 
-	// set auth env for nats
 	// Token authentication
-	if token, ok := secret.Data[NATSToken]; ok {
+	if token, ok := appBindingSecret.Data[NATSToken]; ok {
 		sh.SetEnv(EnvNATSUser, string(token))
 	}
 
 	// Basic authentication
-	user, userExist := secret.Data[NATSUser]
-	password, passwordExist := secret.Data[NATSPassword]
+	user, userExist := appBindingSecret.Data[NATSUser]
+	password, passwordExist := appBindingSecret.Data[NATSPassword]
 
 	if userExist && passwordExist {
 		sh.SetEnv(EnvNATSUser, string(user))
@@ -194,7 +128,7 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	}
 
 	//Nkey Authentication
-	if nkey, ok := secret.Data[NATSNkey]; ok {
+	if nkey, ok := appBindingSecret.Data[NATSNkey]; ok {
 		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile), nkey, os.ModePerm); err != nil {
 			return err
 		}
@@ -202,8 +136,8 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 	}
 
 	// TLS Authentication
-	cert, certExist := secret.Data[NATSCert]
-	key, keyExist := secret.Data[NATSKey]
+	cert, certExist := appBindingSecret.Data[NATSCert]
+	key, keyExist := appBindingSecret.Data[NATSKey]
 
 	if certExist && keyExist {
 		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCertFile), cert, os.ModePerm); err != nil {
@@ -215,13 +149,69 @@ func (opt *natsOptions) setCredentials(sh Shell, appBinding *appcatalog.AppBindi
 		}
 		sh.SetEnv(EnvNATSKey, filepath.Join(opt.setupOptions.ScratchDir, NATSKeyFile))
 	}
+
 	//JWT Authentication
-	if creds, ok := secret.Data[NATSCreds]; ok {
+	if creds, ok := appBindingSecret.Data[NATSCreds]; ok {
 		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile), creds, os.ModePerm); err != nil {
 			return err
 		}
 		sh.SetEnv(EnvNATSCreds, filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile))
 	}
-
 	return nil
+}
+
+func (session *sessionWrapper) setTLSParameters(appBinding *appcatalog.AppBinding, scratchDir string) error {
+	if appBinding.Spec.ClientConfig.CABundle == nil {
+		return nil
+	}
+
+	if err := ioutil.WriteFile(filepath.Join(scratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
+		return err
+	}
+
+	session.sh.SetEnv(EnvNATSCA, filepath.Join(scratchDir, NATSCACertFile))
+	return nil
+}
+
+func (session *sessionWrapper) setNATSConnectionParameters(appBinding *appcatalog.AppBinding) error {
+	host, err := appBinding.Host()
+	if err != nil {
+		return err
+	}
+	session.sh.SetEnv(EnvNATSUrl, host)
+	return nil
+}
+
+func (session *sessionWrapper) setUserArgs(args string) {
+	for _, arg := range strings.Fields(args) {
+		session.cmd.Args = append(session.cmd.Args, arg)
+	}
+}
+
+func clearDir(dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("unable to clean datadir: %v. Reason: %v", dir, err)
+	}
+	return os.MkdirAll(dir, os.ModePerm)
+}
+
+func (session sessionWrapper) waitForNATSReady(warningThreshold string) error {
+	klog.Infoln("Waiting for the nats server to be ready...")
+
+	args := []interface{}{
+		"server",
+		"check",
+		"connection",
+		"--connect-warn", warningThreshold,
+	}
+
+	args = append(session.cmd.Args, args...)
+
+	return wait.PollImmediate(time.Second*5, time.Minute*5, func() (bool, error) {
+		err := session.sh.Command(NATSCMD, args...).Run()
+		if err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
 }
