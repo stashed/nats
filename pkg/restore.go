@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
-	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	"stash.appscode.dev/apimachinery/pkg/restic"
@@ -29,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 	license "go.bytebuilders.dev/license-verifier/kubernetes"
 	"gomodules.xyz/flags"
+	shell "gomodules.xyz/go-sh"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -169,12 +169,29 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		return nil, err
 	}
 
-	err = opt.waitForNATSReady(appBinding)
+	session := opt.newSessionWrapper(NATSCMD)
+
+	err = opt.setNATSCredentials(session.sh, appBinding)
 	if err != nil {
 		return nil, err
 	}
 
-	// we will restore the desired data into interim data dir before restoring the streams
+	err = session.setNATSConnectionParameters(appBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	err = session.setTLSParameters(appBinding, opt.setupOptions.ScratchDir)
+	if err != nil {
+		return nil, err
+	}
+
+	err = session.waitForNATSReady(opt.warningThreshold)
+	if err != nil {
+		return nil, err
+	}
+
+	// we will restore the desired data into the interim data dir before restoring the streams
 	opt.restoreOptions.RestorePaths = []string{opt.interimDataDir}
 
 	resticWrapper, err := restic.NewResticWrapper(opt.setupOptions)
@@ -186,35 +203,8 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	if err != nil {
 		return nil, err
 	}
-
-	host, err := appBinding.Host()
-	if err != nil {
-		return nil, err
-	}
-
-	// run separate shell to perform restore
-	restoreShell := NewSessionWrapper()
-	restoreShell.ShowCMD = true
-
-	opt.setServerUrl(restoreShell, host)
-
-	err = opt.setCredentials(restoreShell, appBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	err = opt.setTLS(restoreShell, appBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	restoreArgs := []interface{}{
-		"stream",
-		"restore",
-	}
-	for _, arg := range strings.Fields(opt.natsArgs) {
-		restoreArgs = append(restoreArgs, arg)
-	}
+	session.cmd.Args = append(session.cmd.Args, "stream", "restore")
+	session.setUserArgs(opt.natsArgs)
 
 	var streams []string
 	if len(opt.streams) != 0 {
@@ -230,15 +220,16 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 		}
 	}
 	if opt.overwrite {
-		err := removeMatchedStreams(restoreShell, streams)
+		err := removeMatchedStreams(session.sh, streams)
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	for i := range streams {
-		args := append(restoreArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-		restoreShell.Command(NATSCMD, args...)
-		if err := restoreShell.Run(); err != nil {
+		args := append(session.cmd.Args, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		session.sh.Command(NATSCMD, args...)
+		if err := session.sh.Run(); err != nil {
 			return nil, err
 		}
 	}
@@ -246,7 +237,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	return restoreOutput, nil
 }
 
-func removeMatchedStreams(sh *SessionWrapper, streams []string) error {
+func removeMatchedStreams(sh *shell.Session, streams []string) error {
 	lsArgs := []interface{}{
 		"stream",
 		"ls",

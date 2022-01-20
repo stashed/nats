@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"path/filepath"
-	"strings"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
 	stash "stash.appscode.dev/apimachinery/client/clientset/versioned"
@@ -31,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 	license "go.bytebuilders.dev/license-verifier/kubernetes"
 	"gomodules.xyz/flags"
+	shell "gomodules.xyz/go-sh"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -199,48 +199,40 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
-	err = opt.waitForNATSReady(appBinding)
+	session := opt.newSessionWrapper(NATSCMD)
+
+	err = opt.setNATSCredentials(session.sh, appBinding)
 	if err != nil {
 		return nil, err
 	}
 
-	host, err := appBinding.Host()
+	err = session.setNATSConnectionParameters(appBinding)
 	if err != nil {
 		return nil, err
 	}
 
-	// run separate shell to perform backup
-	backupShell := NewSessionWrapper()
-	backupShell.ShowCMD = true
-
-	opt.setServerUrl(backupShell, host)
-
-	err = opt.setCredentials(backupShell, appBinding)
+	err = session.setTLSParameters(appBinding, opt.setupOptions.ScratchDir)
 	if err != nil {
 		return nil, err
 	}
 
-	err = opt.setTLS(backupShell, appBinding)
+	err = session.waitForNATSReady(opt.warningThreshold)
 	if err != nil {
 		return nil, err
 	}
 
-	backupArgs := []interface{}{
-		"stream",
-		"backup",
-	}
-	for _, arg := range strings.Fields(opt.natsArgs) {
-		backupArgs = append(backupArgs, arg)
-	}
-	streams, err := opt.getStreams(backupShell)
+	session.cmd.Args = append(session.cmd.Args, "stream", "backup")
+	session.setUserArgs(opt.natsArgs)
+
+	streams, err := opt.getStreams(session.sh)
 	if err != nil {
 		return nil, err
 	}
 
 	for i := range streams {
-		args := append(backupArgs, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-		backupShell.Command(NATSCMD, args...)
-		if err := backupShell.Run(); err != nil {
+		args := append(session.cmd.Args, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		session.sh.Command(NATSCMD, args...)
+		if err := session.sh.Run(); err != nil {
 			return nil, err
 		}
 	}
@@ -256,29 +248,32 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	return resticWrapper.RunBackup(opt.backupOptions, targetRef)
 }
 
-func (opt *natsOptions) getStreams(sh *SessionWrapper) ([]string, error) {
+func (opt *natsOptions) getStreams(sh *shell.Session) ([]string, error) {
 	if len(opt.streams) == 0 {
-
-		streamArgs := []interface{}{
+		args := []interface{}{
 			"stream",
 			"ls",
 			"--json",
 		}
 
-		sh.Command(NATSCMD, streamArgs...)
+		sh.Command(NATSCMD, args...)
+
 		err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
+
 		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
+
 		var streams []string
 		err = json.Unmarshal(byteStreams, &streams)
 		if err != nil {
 			return nil, err
 		}
+
 		return streams, nil
 
 	} else {
@@ -291,6 +286,7 @@ func (opt *natsOptions) getStreams(sh *SessionWrapper) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return opt.streams, nil
 	}
 }
