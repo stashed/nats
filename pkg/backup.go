@@ -282,7 +282,7 @@ func (opt *natsOptions) getStreams(sh *shell.Session) ([]string, error) {
 			return nil, err
 		}
 
-		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0644)
+		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644)
 		if err != nil {
 			return nil, err
 		}
