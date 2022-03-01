@@ -97,6 +97,7 @@ func (opt *natsOptions) newSessionWrapper(cmd string) *sessionWrapper {
 		},
 	}
 }
+
 func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcatalog.AppBinding) error {
 	// if credential secret is not provided in AppBinding, then nothing to do.
 	if appBinding.Spec.Secret == nil {
@@ -127,7 +128,7 @@ func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcat
 		sh.SetEnv(EnvNATSPassword, string(password))
 	}
 
-	//Nkey Authentication
+	// Nkey Authentication
 	if nkey, ok := appBindingSecret.Data[NATSNkey]; ok {
 		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile), nkey, os.ModePerm); err != nil {
 			return err
@@ -150,7 +151,7 @@ func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcat
 		sh.SetEnv(EnvNATSKey, filepath.Join(opt.setupOptions.ScratchDir, NATSKeyFile))
 	}
 
-	//JWT Authentication
+	// JWT Authentication
 	if creds, ok := appBindingSecret.Data[NATSCreds]; ok {
 		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile), creds, os.ModePerm); err != nil {
 			return err
