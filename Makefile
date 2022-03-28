@@ -42,7 +42,7 @@ else
 	endif
 endif
 
-RESTIC_VER := 0.12.1
+RESTIC_VER := 0.13.0
 NATS_CLI_VER := 0.0.26
 ###
 ### These variables should not need tweaking.
