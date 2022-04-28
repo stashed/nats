@@ -68,20 +68,21 @@ type natsOptions struct {
 	stashClient   stash.Interface
 	catalogClient appcatalog_cs.Interface
 
-	namespace         string
-	backupSessionName string
-	interimDataDir    string
-	streams           []string
-	overwrite         bool
-	appBindingName    string
-	natsArgs          string
-	waitTimeout       int32
-	warningThreshold  string
-	outputDir         string
-	storageSecret     kmapi.ObjectReference
-	setupOptions      restic.SetupOptions
-	backupOptions     restic.BackupOptions
-	restoreOptions    restic.RestoreOptions
+	namespace           string
+	backupSessionName   string
+	interimDataDir      string
+	streams             []string
+	overwrite           bool
+	appBindingName      string
+	appBindingNamespace string
+	natsArgs            string
+	waitTimeout         int32
+	warningThreshold    string
+	outputDir           string
+	storageSecret       kmapi.ObjectReference
+	setupOptions        restic.SetupOptions
+	backupOptions       restic.BackupOptions
+	restoreOptions      restic.RestoreOptions
 }
 
 type sessionWrapper struct {
