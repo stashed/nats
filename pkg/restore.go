@@ -229,7 +229,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	}
 
 	for i := range streams {
-		args := append(session.cmd.Args, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		args := append(session.cmd.Args, filepath.Join(opt.interimDataDir, streams[i]))
 		session.sh.Command(NATSCMD, args...)
 		if err := session.sh.Run(); err != nil {
 			return nil, err

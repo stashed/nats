@@ -223,9 +223,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
-	session.setUserArgs(opt.natsArgs)
-
-	if err := opt.writeStreams(session.sh); err != nil {
+	if err := opt.writeStreamNamesToFile(session.sh); err != nil {
 		return nil, err
 	}
 
@@ -246,50 +244,81 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 func (opt *natsOptions) dumpStreams(session *sessionWrapper) error {
 	if len(opt.streams) == 0 {
-		session.cmd.Args = append(session.cmd.Args, "account", "backup", opt.interimDataDir, "-f")
-		session.sh.Command(NATSCMD, session.cmd.Args...)
-		if err := session.sh.Run(); err != nil {
+		if err := opt.dumpAll(session); err != nil {
 			return err
 		}
-	} else {
-		session.cmd.Args = append(session.cmd.Args, "stream", "backup")
-		streams := opt.streams
-		for i := range streams {
-			args := append(session.cmd.Args, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
-			session.sh.Command(NATSCMD, args...)
-			if err := session.sh.Run(); err != nil {
-				return err
-			}
+		return nil
+	}
+
+	if err := opt.dump(session); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (opt *natsOptions) dumpAll(session *sessionWrapper) error {
+	session.cmd.Args = append(session.cmd.Args, "account", "backup", opt.interimDataDir, "-f")
+	session.setUserArgs(opt.natsArgs)
+	session.sh.Command(NATSCMD, session.cmd.Args...)
+	if err := session.sh.Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (opt *natsOptions) dump(session *sessionWrapper) error {
+	session.cmd.Args = append(session.cmd.Args, "stream", "backup")
+	session.setUserArgs(opt.natsArgs)
+	streams := opt.streams
+	for i := range streams {
+		args := append(session.cmd.Args, streams[i], filepath.Join(opt.interimDataDir, streams[i]))
+		session.sh.Command(NATSCMD, args...)
+		if err := session.sh.Run(); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (opt *natsOptions) writeStreams(sh *shell.Session) error {
+func (opt *natsOptions) writeStreamNamesToFile(sh *shell.Session) error {
 	if len(opt.streams) == 0 {
-		args := []interface{}{
-			"stream",
-			"ls",
-			"--json",
-		}
-		sh.Command(NATSCMD, args...)
-
-		if err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile)); err != nil {
+		if err := opt.writeAll(sh); err != nil {
 			return err
 		}
-
-		return nil
-
-	} else {
-		byteStreams, err := json.Marshal(opt.streams)
-		if err != nil {
-			return err
-		}
-
-		if err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644); err != nil {
-			return err
-		}
-
 		return nil
 	}
+
+	if err := opt.write(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (opt *natsOptions) writeAll(sh *shell.Session) error {
+	args := []interface{}{
+		"stream",
+		"ls",
+		"--json",
+	}
+	sh.Command(NATSCMD, args...)
+
+	if err := sh.WriteStdout(filepath.Join(opt.interimDataDir, NATSStreamsFile)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (opt *natsOptions) write() error {
+	byteStreams, err := json.Marshal(opt.streams)
+	if err != nil {
+		return err
+	}
+
+	if err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644); err != nil {
+		return err
+	}
+	return nil
 }
