@@ -19,7 +19,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -320,7 +320,7 @@ func (opt *natsOptions) write() error {
 		return err
 	}
 
-	if err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644); err != nil {
 		return err
 	}
 	return nil
