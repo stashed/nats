@@ -19,7 +19,6 @@ package pkg
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,7 +132,7 @@ func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcat
 
 	// Nkey Authentication
 	if nkey, ok := appBindingSecret.Data[NATSNkey]; ok {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile), nkey, os.ModePerm); err != nil {
+		if err := os.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile), nkey, os.ModePerm); err != nil {
 			return err
 		}
 		sh.SetEnv(EnvNATSNkey, filepath.Join(opt.setupOptions.ScratchDir, NATSNkeyFile))
@@ -144,11 +143,11 @@ func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcat
 	key, keyExist := appBindingSecret.Data[NATSKey]
 
 	if certExist && keyExist {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCertFile), cert, os.ModePerm); err != nil {
+		if err := os.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCertFile), cert, os.ModePerm); err != nil {
 			return err
 		}
 		sh.SetEnv(EnvNATSCert, filepath.Join(opt.setupOptions.ScratchDir, NATSCertFile))
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSKeyFile), key, os.ModePerm); err != nil {
+		if err := os.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSKeyFile), key, os.ModePerm); err != nil {
 			return err
 		}
 		sh.SetEnv(EnvNATSKey, filepath.Join(opt.setupOptions.ScratchDir, NATSKeyFile))
@@ -156,7 +155,7 @@ func (opt *natsOptions) setNATSCredentials(sh *shell.Session, appBinding *appcat
 
 	// JWT Authentication
 	if creds, ok := appBindingSecret.Data[NATSCreds]; ok {
-		if err := ioutil.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile), creds, os.ModePerm); err != nil {
+		if err := os.WriteFile(filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile), creds, os.ModePerm); err != nil {
 			return err
 		}
 		sh.SetEnv(EnvNATSCreds, filepath.Join(opt.setupOptions.ScratchDir, NATSCredsFile))
@@ -169,7 +168,7 @@ func (session *sessionWrapper) setTLSParameters(appBinding *appcatalog.AppBindin
 		return nil
 	}
 
-	if err := ioutil.WriteFile(filepath.Join(scratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
+	if err := os.WriteFile(filepath.Join(scratchDir, NATSCACertFile), appBinding.Spec.ClientConfig.CABundle, os.ModePerm); err != nil {
 		return err
 	}
 
