@@ -19,7 +19,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -268,7 +268,7 @@ func (opt *natsOptions) getStreams(sh *shell.Session) ([]string, error) {
 			return nil, err
 		}
 
-		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		byteStreams, err := os.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
@@ -287,7 +287,7 @@ func (opt *natsOptions) getStreams(sh *shell.Session) ([]string, error) {
 			return nil, err
 		}
 
-		err = ioutil.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644)
+		err = os.WriteFile(filepath.Join(opt.interimDataDir, NATSStreamsFile), byteStreams, 0o644)
 		if err != nil {
 			return nil, err
 		}
