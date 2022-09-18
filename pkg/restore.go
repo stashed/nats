@@ -19,7 +19,7 @@ package pkg
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	api_v1beta1 "stash.appscode.dev/apimachinery/apis/stash/v1beta1"
@@ -215,7 +215,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 	if len(opt.streams) != 0 {
 		streams = opt.streams
 	} else {
-		byteStreams, err := ioutil.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
+		byteStreams, err := os.ReadFile(filepath.Join(opt.interimDataDir, NATSStreamsFile))
 		if err != nil {
 			return nil, err
 		}
