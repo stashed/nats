@@ -36,7 +36,7 @@ LABEL org.opencontainers.image.source https://github.com/stashed/nats
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
-ENV USER nobody
+ENV USER 65534
 
 RUN set -x \
   && apt-get update \
@@ -47,6 +47,6 @@ COPY --from=0 /restic /bin/restic
 COPY --from=0 /nats-{NATS_CLI_VER}-{ARG_OS}-{ARG_ARCH}/nats /bin/nats
 COPY bin/{ARG_OS}_{ARG_ARCH}/{ARG_BIN} /{ARG_BIN}
 
-USER nobody
+USER 65534
 
 ENTRYPOINT ["/{ARG_BIN}"]
