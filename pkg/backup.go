@@ -199,7 +199,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 		return nil, err
 	}
 
-	klog.Infoln("Cleaning up temporary data directory directory: ", opt.interimDataDir)
+	klog.Infoln("Cleaning up temporary data directory: ", opt.interimDataDir)
 	if err := clearDir(opt.interimDataDir); err != nil {
 		return nil, err
 	}
