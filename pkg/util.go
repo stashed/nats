@@ -210,7 +210,7 @@ func (session sessionWrapper) waitForNATSReady(warningThreshold string) error {
 
 	args = append(session.cmd.Args, args...)
 
-	return wait.PollImmediate(time.Second*5, time.Minute*5, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.Background(), time.Second*5, time.Minute*5, true, func(ctx context.Context) (bool, error) {
 		err := session.sh.Command(NATSCMD, args...).Run()
 		if err != nil {
 			return false, nil
