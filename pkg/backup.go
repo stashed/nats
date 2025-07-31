@@ -250,6 +250,10 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 	if err != nil {
 		return nil, err
 	}
+	err = resticWrapper.EnsureNoExclusiveLock(opt.kubeClient, opt.namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	return resticWrapper.RunBackup(opt.backupOptions, targetRef)
 }
