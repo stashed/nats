@@ -201,7 +201,7 @@ func clearDir(dir string) error {
 func (session sessionWrapper) waitForNATSReady(warningThreshold string) error {
 	klog.Infoln("Waiting for the nats server to be ready...")
 
-	args := []interface{}{
+	args := []any{
 		"server",
 		"check",
 		"connection",
