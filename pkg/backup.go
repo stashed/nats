@@ -305,7 +305,7 @@ func (opt *natsOptions) writeStreamNamesToFile(sh *shell.Session) error {
 }
 
 func (opt *natsOptions) writeAll(sh *shell.Session) error {
-	args := []interface{}{
+	args := []any{
 		"stream",
 		"ls",
 		"--json",
