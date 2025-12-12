@@ -260,7 +260,7 @@ func (opt *natsOptions) backupNATS(targetRef api_v1beta1.TargetRef) (*restic.Bac
 
 func (opt *natsOptions) getStreams(sh *shell.Session) ([]string, error) {
 	if len(opt.streams) == 0 {
-		args := []interface{}{
+		args := []any{
 			"stream",
 			"ls",
 			"--json",

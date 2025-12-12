@@ -244,7 +244,7 @@ func (opt *natsOptions) restoreNATS(targetRef api_v1beta1.TargetRef) (*restic.Re
 }
 
 func removeMatchedStreams(sh *shell.Session, streams []string) error {
-	lsArgs := []interface{}{
+	lsArgs := []any{
 		"stream",
 		"ls",
 		"--json",
@@ -257,7 +257,7 @@ func removeMatchedStreams(sh *shell.Session, streams []string) error {
 	if err := json.Unmarshal(byteStreams, &currStreams); err != nil {
 		return err
 	}
-	rmArgs := []interface{}{
+	rmArgs := []any{
 		"stream",
 		"rm",
 		"-f",
